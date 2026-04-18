@@ -25,6 +25,16 @@ const router = express.Router();
  *   get:
  *     summary: Ambil semua file CSV
  *     tags: [CSV]
+ *     responses:
+ *       200:
+ *         description: List file
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               data:
+ *                 - data-130426-v1.csv
+ *                 - data-140426-v2.csv
  */
 router.get("/files", getAllFiles);
 
@@ -34,6 +44,17 @@ router.get("/files", getAllFiles);
  *   get:
  *     summary: Ambil data CSV terbaru
  *     tags: [CSV]
+ *     responses:
+ *       200:
+ *         description: Success
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               data:
+ *                 filename: data-140426-v2.csv
+ *                 totalRows: 120
+ *                 rows: []
  */
 router.get("/read-latest", readLatestCSV);
 
@@ -43,6 +64,19 @@ router.get("/read-latest", readLatestCSV);
  *   post:
  *     summary: Upload file CSV
  *     tags: [CSV]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Upload berhasil
  */
 router.post(
   "/upload",
@@ -82,10 +116,46 @@ router.get("/read/:filename", readCSV);
 
 /**
  * @swagger
+ * /api/read/{filename}:
+ *   get:
+ *     summary: Ambil data CSV berdasarkan filename
+ *     tags: [CSV]
+ *     parameters:
+ *       - in: path
+ *         name: filename
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: data-130426-v5.csv
+ *     responses:
+ *       200:
+ *         description: Success
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               data:
+ *                 filename: data-130426-v5.csv
+ *                 totalRows: 100
+ *                 rows: []
+ */
+
+/**
+ * @swagger
  * /api/delete/{filename}:
  *   delete:
  *     summary: Hapus file CSV
  *     tags: [CSV]
+ *     parameters:
+ *       - in: path
+ *         name: filename
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: data-130426-v5.csv
+ *     responses:
+ *       200:
+ *         description: File berhasil dihapus
  */
 router.delete("/delete/:filename", deleteFile);
 
