@@ -5,7 +5,11 @@ import {
   getCSVHistory,
   readCSV,
   deleteFile,
+  getAllFiles,
+  readLatestCSV
 } from "../controllers/csvController.js";
+router.get("/files", getAllFiles);
+router.get("/read-latest", readLatestCSV);
 import {
   deleteOldFiles,
   checkDailyLimit,
@@ -39,6 +43,14 @@ const router = express.Router();
  *     responses:
  *       200:
  *         description: CSV berhasil diupload
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               message: CSV processed successfully
+ *               data:
+ *                 rows: 100
+ *                 preview: []
  */
 router.post(
   "/upload",
@@ -47,7 +59,8 @@ router.post(
 
     if (checkDailyLimit()) {
       return res.status(429).json({
-        error: "Upload limit reached for today (max 10 files).",
+        success: false,
+        message: "Upload limit reached for today (max 10 files).",
       });
     }
 
@@ -66,14 +79,39 @@ router.post(
  *     responses:
  *       200:
  *         description: Success
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               data:
+ *                 - "2026-04-13 - Uploaded data-130426-v1.csv"
  */
 router.get("/history", getCSVHistory);
 
 /**
  * @swagger
+ * /api/files:
+ *   get:
+ *     summary: Ambil semua file CSV
+ *     tags: [CSV]
+ *     responses:
+ *       200:
+ *         description: List file CSV
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               data:
+ *                 - data-130426-v1.csv
+ *                 - data-140426-v2.csv
+ */
+router.get("/files", getAllFiles);
+
+/**
+ * @swagger
  * /api/read/{filename}:
  *   get:
- *     summary: Ambil data CSV dalam bentuk JSON
+ *     summary: Ambil data CSV berdasarkan filename
  *     tags: [CSV]
  *     parameters:
  *       - in: path
@@ -85,8 +123,37 @@ router.get("/history", getCSVHistory);
  *     responses:
  *       200:
  *         description: Success
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               data:
+ *                 filename: data-130426-v5.csv
+ *                 totalRows: 100
+ *                 rows: []
  */
 router.get("/read/:filename", readCSV);
+
+/**
+ * @swagger
+ * /api/read-latest:
+ *   get:
+ *     summary: Ambil data CSV terbaru
+ *     tags: [CSV]
+ *     responses:
+ *       200:
+ *         description: Success
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               message: Latest file fetched
+ *               data:
+ *                 filename: data-140426-v2.csv
+ *                 totalRows: 120
+ *                 rows: []
+ */
+router.get("/read-latest", readLatestCSV);
 
 /**
  * @swagger
@@ -104,6 +171,11 @@ router.get("/read/:filename", readCSV);
  *     responses:
  *       200:
  *         description: File berhasil dihapus
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               message: File deleted successfully
  */
 router.delete("/delete/:filename", deleteFile);
 

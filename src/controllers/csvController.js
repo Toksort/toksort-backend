@@ -165,10 +165,14 @@ export const readCSV = async (req, res) => {
       return filtered;
     });
 
-    return res.json({
-      filename,
-      totalRows: cleanedData.length,
-      data: cleanedData
+   return res.json({
+      success: true,
+      message: "File read successfully",
+      data: {
+        filename,
+        totalRows: cleanedData.length,
+        rows: cleanedData
+      }
     });
 
   } catch (error) {
@@ -207,5 +211,113 @@ export const deleteFile = (req, res) => {
   } catch (error) {
     console.error("Delete file error:", error);
     return res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+export const getAllFiles = (req, res) => {
+  try {
+    const uploadDir = path.resolve("src/uploads");
+
+    if (!fs.existsSync(uploadDir)) {
+      return res.json({
+        success: true,
+        data: []
+      });
+    }
+
+    let files = fs
+      .readdirSync(uploadDir)
+      .filter((file) => file.endsWith(".csv"));
+
+    // 🔥 sort terbaru (berdasarkan modified time)
+    files = files.sort((a, b) => {
+      const statA = fs.statSync(path.join(uploadDir, a));
+      const statB = fs.statSync(path.join(uploadDir, b));
+      return statB.mtime - statA.mtime;
+    });
+
+    return res.json({
+      success: true,
+      data: files
+    });
+
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to get files"
+    });
+  }
+};
+
+export const readLatestCSV = async (req, res) => {
+  try {
+    const uploadDir = path.resolve("src/uploads");
+
+    if (!fs.existsSync(uploadDir)) {
+      return res.status(404).json({
+        success: false,
+        message: "No files found"
+      });
+    }
+
+    let files = fs
+      .readdirSync(uploadDir)
+      .filter((file) => file.endsWith(".csv"));
+
+    if (files.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No CSV files available"
+      });
+    }
+
+    // 🔥 ambil file terbaru
+    files = files.sort((a, b) => {
+      const statA = fs.statSync(path.join(uploadDir, a));
+      const statB = fs.statSync(path.join(uploadDir, b));
+      return statB.mtime - statA.mtime;
+    });
+
+    const latestFile = files[0];
+    const filePath = path.join(uploadDir, latestFile);
+
+    const rawData = await parseCSV(filePath);
+
+    const cleanedData = rawData.map((row) => {
+      const filtered = {};
+
+      allowedHeaders.forEach((header) => {
+        const newKey = headerMap[header];
+
+        if (header === "quantity") {
+          filtered[newKey] = parseInt(row[header]) || 0;
+        } else {
+          filtered[newKey] = row[header] ?? null;
+        }
+      });
+
+      const createdTime = row["created time"];
+      filtered.shipping_status = getShippingStatus(createdTime);
+
+      return filtered;
+    });
+
+    return res.json({
+      success: true,
+      message: "Latest file fetched",
+      data: {
+        filename: latestFile,
+        totalRows: cleanedData.length,
+        rows: cleanedData
+      }
+    });
+
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to read latest file"
+    });
   }
 };
