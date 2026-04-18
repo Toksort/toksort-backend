@@ -1,7 +1,7 @@
 const BASE_URL =
   process.env.BASE_URL ||
   (process.env.NODE_ENV === "production"
-    ? "https://swapping-baffling-pasta.ngrok-free.dev"
+    ? "https://swapping-baffling-pasta.ngrok-free.app"
     : "http://localhost:3000");
 
 const options = {

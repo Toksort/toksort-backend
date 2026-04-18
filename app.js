@@ -67,7 +67,7 @@ const swaggerOptions = {
         url: "http://localhost:3000",
       },
       {
-        url: "https://swapping-baffling-pasta.ngrok-free.dev",
+        url: "https://swapping-baffling-pasta.ngrok-free.app",
       },
     ],
   },
