@@ -1,7 +1,7 @@
 const BASE_URL =
   process.env.BASE_URL ||
   (process.env.NODE_ENV === "production"
-    ? "https://swapping-baffling-pasta.ngrok-free.app"
+    ? "https://toksort-backend-production.up.railway.app"
     : "http://localhost:3000");
 
 const options = {
