@@ -1,12 +1,45 @@
-const multer = require("multer");
-const path = require("path");
-const fs = require("fs");
+import multer from "multer";
+import path from "path";
+import fs from "fs";
+import { fileURLToPath } from "url";
 
-// Pastikan folder uploads ada
+// 🔥 biar bisa pakai __dirname di ESM
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// ✅ pastikan folder uploads ada
 const uploadPath = path.join(__dirname, "../uploads");
+
 if (!fs.existsSync(uploadPath)) {
   fs.mkdirSync(uploadPath, { recursive: true });
 }
+
+// 🔥 storage
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadPath); // ✅ pakai absolute path
+  },
+  filename: (req, file, cb) => {
+    const uniqueName = Date.now() + path.extname(file.originalname);
+    cb(null, uniqueName);
+  },
+});
+
+// 🔥 filter hanya CSV
+const fileFilter = (req, file, cb) => {
+  const ext = path.extname(file.originalname).toLowerCase();
+
+  if (ext === ".csv") {
+    cb(null, true);
+  } else {
+    req.fileValidationError = "Only CSV files are allowed";
+    cb(null, false);
+  }
+};
+
+const upload = multer({ storage, fileFilter });
+
+export default upload;
 
 // Generate nama file otomatis: data-DDMMYY-vX.csv
 function generateVersionedFilename() {
@@ -39,30 +72,3 @@ function generateVersionedFilename() {
 
   return `${baseName}-v${newVersion}.csv`;
 }
-
-// Storage config
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, "src/uploads");
-  },
-  filename: (req, file, cb) => {
-    const uniqueName = Date.now() + path.extname(file.originalname);
-    cb(null, uniqueName);
-  },
-});
-
-// Filter hanya CSV
-const fileFilter = (req, file, cb) => {
-  const ext = path.extname(file.originalname).toLowerCase();
-
-  if (ext === ".csv") {
-    cb(null, true);
-  } else {
-    cb(null, false); // ❗ JANGAN throw error di sini
-    req.fileValidationError = "Only CSV files are allowed";
-  }
-};
-
-const upload = multer({ storage, fileFilter });
-
-export default upload;
