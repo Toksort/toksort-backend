@@ -58,6 +58,11 @@ export const uploadCSV = async (req, res) => {
       });
     }
 
+    // 🔥 INI YANG KURANG
+    const filename = req.file.filename;
+    const filePath = path.join(__dirname, "../uploads", filename);
+
+    // 🔥 sekarang aman
     const rawData = await parseCSV(filePath);
 
     // 🔥 CLEAN + TRANSFORM DATA
