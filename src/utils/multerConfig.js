@@ -53,14 +53,19 @@ const storage = multer.diskStorage({
 
 // Filter hanya CSV
 const fileFilter = (req, file, cb) => {
-  if (file.mimetype === "text/csv") {
+  const allowedTypes = [
+    'text/csv',
+    'application/vnd.ms-excel',
+    'application/octet-stream',
+  ];
+
+  const isCsv =
+    allowedTypes.includes(file.mimetype) ||
+    file.originalname.endsWith('.csv');
+
+  if (isCsv) {
     cb(null, true);
   } else {
-    cb(new Error("Invalid file type, only CSV allowed!"), false);
+    cb(new Error('Invalid file type, only CSV allowed!'), false);
   }
 };
-
-module.exports = multer({
-  storage: storage,
-  fileFilter: fileFilter
-});
