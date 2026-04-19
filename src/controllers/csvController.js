@@ -44,15 +44,18 @@ const getShippingStatus = (createdTime) => {
 // =======================
 export const uploadCSV = async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ error: "No CSV file uploaded" });
+    if (req.fileValidationError) {
+      return res.status(400).json({
+        success: false,
+        message: req.fileValidationError,
+      });
     }
 
-    const filename = req.file.filename;
-    const filePath = path.join(__dirname, "../uploads", filename);
-
-    if (!fs.existsSync(filePath)) {
-      return res.status(500).json({ error: "Uploaded file not found in server" });
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: "No CSV file uploaded",
+      });
     }
 
     const rawData = await parseCSV(filePath);
