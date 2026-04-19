@@ -42,30 +42,27 @@ function generateVersionedFilename() {
 
 // Storage config
 const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, uploadPath);
+  destination: (req, file, cb) => {
+    cb(null, "src/uploads");
   },
-  filename: function (req, file, cb) {
-    const finalName = generateVersionedFilename();
-    cb(null, finalName);
-  }
+  filename: (req, file, cb) => {
+    const uniqueName = Date.now() + path.extname(file.originalname);
+    cb(null, uniqueName);
+  },
 });
 
 // Filter hanya CSV
 const fileFilter = (req, file, cb) => {
-  const allowedTypes = [
-    'text/csv',
-    'application/vnd.ms-excel',
-    'application/octet-stream',
-  ];
+  const ext = path.extname(file.originalname).toLowerCase();
 
-  const isCsv =
-    allowedTypes.includes(file.mimetype) ||
-    file.originalname.endsWith('.csv');
-
-  if (isCsv) {
+  if (ext === ".csv") {
     cb(null, true);
   } else {
-    cb(new Error('Invalid file type, only CSV allowed!'), false);
+    cb(null, false); // ❗ JANGAN throw error di sini
+    req.fileValidationError = "Only CSV files are allowed";
   }
 };
+
+const upload = multer({ storage, fileFilter });
+
+export default upload;
