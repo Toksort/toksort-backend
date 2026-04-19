@@ -11,8 +11,11 @@ export default function parseCSV(filePath) {
         const cleanRow = {};
 
         Object.keys(row).forEach((key) => {
-          const cleanKey = key.trim().toLowerCase(); // 🔥 MAGIC DI SINI
-          cleanRow[cleanKey] = row[key]?.trim();
+          const cleanKey = key.trim().toLowerCase();
+          const value = row[key];
+
+          cleanRow[cleanKey] =
+            typeof value === "string" ? value.trim() : value ?? null;
         });
 
         results.push(cleanRow);
