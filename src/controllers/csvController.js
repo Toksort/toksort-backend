@@ -443,6 +443,51 @@ export const getSummary = async (req, res) => {
   }
 };
 
+export const deleteAllFiles = (req, res) => {
+  try {
+    const uploadDir = path.join(__dirname, "../uploads");
+
+    if (!fs.existsSync(uploadDir)) {
+      return res.json({
+        success: true,
+        message: "Folder tidak ada, nothing to delete"
+      });
+    }
+
+    const files = fs.readdirSync(uploadDir);
+
+    let deletedCount = 0;
+
+    files.forEach((file) => {
+      const filePath = path.join(uploadDir, file);
+
+      if (fs.statSync(filePath).isFile()) {
+        fs.unlinkSync(filePath);
+        deletedCount++;
+      }
+    });
+
+    // 🔥 BONUS: CLEAR LOG DI SINI
+    const logPath = path.join(__dirname, "../logs/history.log");
+
+    if (fs.existsSync(logPath)) {
+      fs.writeFileSync(logPath, ""); // kosongin log
+    }
+
+    return res.json({
+      success: true,
+      message: `Berhasil hapus ${deletedCount} file & reset log`
+    });
+
+  } catch (error) {
+    console.error("Delete all error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Gagal hapus semua file"
+    });
+  }
+};
+
 const normalizeVariant = (variant) => {
   if (!variant) return "unknown";
 

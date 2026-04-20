@@ -5,6 +5,7 @@ import {
   getCSVHistory,
   readCSV,
   deleteFile,
+  deleteAllFiles,
   getAllFiles,
   readLatestCSV,
   getSummary
@@ -171,5 +172,17 @@ router.get("/summary", getSummary);
  *         description: File berhasil dihapus
  */
 router.delete("/delete/:filename", deleteFile);
+
+/**
+ * @swagger
+ * /api/delete-all:
+ *   delete:
+ *     summary: Delete all CSV files
+ *     tags: [CSV]
+ *     responses:
+ *       200:
+ *         description: All files deleted
+ */
+router.delete("/delete-all", deleteAllFiles);
 
 export default router;
