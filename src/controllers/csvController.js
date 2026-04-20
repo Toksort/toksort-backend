@@ -488,17 +488,22 @@ export const deleteAllFiles = (req, res) => {
   }
 };
 
+const allowedVariants = [
+  "A2","A3","A4","A5","A6","A7","A8","A9",
+  "A10","A11","A12","A13","A14","A15","A16","A17","A18","A19","A20"
+];
+
 const normalizeVariant = (variant) => {
   if (!variant) return "unknown";
 
-  const text = variant.toLowerCase().trim();
+  const text = variant.toUpperCase();
 
-  if (text === "default") return "A5";
+  if (text === "DEFAULT") return "A5";
 
-  const match = text.match(/a\s*([2-9]|1[0-9]|20)/i);
-
-  if (match) {
-    return `A${match[1]}`;
+  for (let v of allowedVariants) {
+    if (text.includes(v)) {
+      return v;
+    }
   }
 
   return "unknown";
