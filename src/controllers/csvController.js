@@ -74,6 +74,10 @@ export const uploadCSV = async (req, res) => {
 
         if (header === "quantity") {
           filtered[newKey] = parseInt(row[header]) || 0;
+
+        } else if (header === "variation") {
+          filtered[newKey] = normalizeVariant(row[header]);
+
         } else {
           filtered[newKey] = row[header] ?? null;
         }
@@ -162,6 +166,10 @@ export const readCSV = async (req, res) => {
 
         if (header === "quantity") {
           filtered[newKey] = parseInt(row[header]) || 0;
+
+        } else if (header === "variation") {
+          filtered[newKey] = normalizeVariant(row[header]);
+
         } else {
           filtered[newKey] = row[header] ?? null;
         }
@@ -300,6 +308,10 @@ export const readLatestCSV = async (req, res) => {
 
         if (header === "quantity") {
           filtered[newKey] = parseInt(row[header]) || 0;
+
+        } else if (header === "variation") {
+          filtered[newKey] = normalizeVariant(row[header]);
+
         } else {
           filtered[newKey] = row[header] ?? null;
         }
@@ -328,4 +340,121 @@ export const readLatestCSV = async (req, res) => {
       message: "Failed to read latest file"
     });
   }
+};
+
+export const getSummary = async (req, res) => {
+  try {
+    const uploadDir = path.join(__dirname, "../uploads");
+
+    if (!fs.existsSync(uploadDir)) {
+      return res.status(404).json({
+        success: false,
+        message: "No files found"
+      });
+    }
+
+    let files = fs
+      .readdirSync(uploadDir)
+      .filter((file) => file.endsWith(".csv"));
+
+    if (files.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No CSV files available"
+      });
+    }
+
+    // 🔥 ambil file terbaru
+    files = files.sort((a, b) => {
+      const statA = fs.statSync(path.join(uploadDir, a));
+      const statB = fs.statSync(path.join(uploadDir, b));
+      return statB.mtime - statA.mtime;
+    });
+
+    const latestFile = files[0];
+    const filePath = path.join(uploadDir, latestFile);
+
+    const rawData = await parseCSV(filePath);
+
+    // 🔥 CLEAN DATA (PASTIKAN PAKAI normalizeVariant)
+    const cleanedData = rawData.map((row) => {
+      const filtered = {};
+
+      allowedHeaders.forEach((header) => {
+        const newKey = headerMap[header];
+
+        if (header === "quantity") {
+          filtered[newKey] = parseInt(row[header]) || 0;
+
+        } else if (header === "variation") {
+          filtered[newKey] = normalizeVariant(row[header]);
+
+        } else {
+          filtered[newKey] = row[header] ?? null;
+        }
+      });
+
+      const createdTime = row["created time"];
+      filtered.shipping_status = getShippingStatus(createdTime);
+
+      return filtered;
+    });
+
+    // =====================
+    // 🔥 SUMMARY LOGIC
+    // =====================
+    let totalOrders = cleanedData.length;
+    let totalQty = 0;
+
+    const byVariation = {};
+    const byStatus = {};
+
+    cleanedData.forEach((item) => {
+      const qty = item.quantity || 0;
+      totalQty += qty;
+
+      // variation
+      const v = item.variation || "unknown";
+      byVariation[v] = (byVariation[v] || 0) + qty;
+
+      // status
+      const s = item.shipping_status || "unknown";
+      byStatus[s] = (byStatus[s] || 0) + 1;
+    });
+
+    return res.json({
+      success: true,
+      message: "Summary generated",
+      data: {
+        filename: latestFile,
+        total_orders: totalOrders,
+        total_quantity: totalQty,
+        by_variation: byVariation,
+        by_status: byStatus
+      }
+    });
+
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to generate summary"
+    });
+  }
+};
+
+const normalizeVariant = (variant) => {
+  if (!variant) return "unknown";
+
+  const text = variant.toLowerCase().trim();
+
+  if (text === "default") return "A5";
+
+  const match = text.match(/a\s*([2-9]|1[0-9]|20)/i);
+
+  if (match) {
+    return `A${match[1]}`;
+  }
+
+  return "unknown";
 };

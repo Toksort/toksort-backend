@@ -6,7 +6,8 @@ import {
   readCSV,
   deleteFile,
   getAllFiles,
-  readLatestCSV
+  readLatestCSV,
+  getSummary
 } from "../controllers/csvController.js";
 import { deleteOldFiles, checkDailyLimit } from "../utils/fileCleaner.js";
 
@@ -139,6 +140,18 @@ router.get("/read/:filename", readCSV);
  *                 totalRows: 100
  *                 rows: []
  */
+
+/**
+ * @swagger
+ * /api/summary:
+ *   get:
+ *     summary: Get summary analytics from latest CSV
+ *     tags: [Analytics]
+ *     responses:
+ *       200:
+ *         description: Summary data
+ */
+router.get("/summary", getSummary);
 
 /**
  * @swagger
