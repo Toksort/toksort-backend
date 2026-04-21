@@ -66,7 +66,7 @@ const getStatusFromTime = (createdTime) => {
 
   return {
     order_status: hour < 12 ? "urgent" : "normal",
-    shipping_status: hour < 12 ? "today" : "tomorrow"
+    shipping_status: hour < 12 ? "Kirim Hari ini" : "Kirim Besok"
   };
 };
 
@@ -75,31 +75,46 @@ const getStatusFromTime = (createdTime) => {
 // =======================
 const transformData = (rawData) => {
   return rawData.map((row) => {
-    const filtered = {};
+    return {
+      order_id: row["order id"] ?? null,
+      product_name: row["product name"] ?? null,
 
-    allowedHeaders.forEach((header) => {
-      const newKey = headerMap[header];
+      quantity: parseInt(row["quantity"]) || 0,
+      variation: normalizeVariant(row["variation"]),
 
-      if (header === "quantity") {
-        filtered[newKey] = parseInt(row[header]) || 0;
+      created_time: row["created time"] ?? null,
 
-      } else if (header === "variation") {
-        filtered[newKey] = normalizeVariant(row[header]);
-
-      } else {
-        filtered[newKey] = row[header] ?? null;
-      }
-    });
-
-    const { order_status, shipping_status } =
-      getStatusFromTime(row["created time"]);
-
-    filtered.order_status = order_status;
-    filtered.shipping_status = shipping_status;
-
-    return filtered;
+      ...getStatusFromTime(row["created time"])
+    };
   });
 };
+// const transformData = (rawData) => {
+//   return rawData.map((row) => {
+//     const filtered = {};
+
+//     allowedHeaders.forEach((header) => {
+//       const newKey = headerMap[header];
+
+//       if (header === "quantity") {
+//         filtered[newKey] = parseInt(row[header]) || 0;
+
+//       } else if (header === "variation") {
+//         filtered[newKey] = normalizeVariant(row[header]);
+
+//       } else {
+//         filtered[newKey] = row[header] ?? null;
+//       }
+//     });
+
+//     const { order_status, shipping_status } =
+//       getStatusFromTime(row["created time"]);
+
+//     filtered.order_status = order_status;
+//     filtered.shipping_status = shipping_status;
+
+//     return filtered;
+//   });
+// };
 
 // =======================
 // UPLOAD CSV
