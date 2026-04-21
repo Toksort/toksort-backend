@@ -379,3 +379,32 @@ export const deleteAllFiles = (req, res) => {
     });
   }
 };
+
+export const getCSVHistory = (req, res) => {
+  try {
+    const logPath = path.join(__dirname, "../logs/history.log");
+
+    if (!fs.existsSync(logPath)) {
+      return res.json({
+        success: true,
+        data: []
+      });
+    }
+
+    const logs = fs
+      .readFileSync(logPath, "utf-8")
+      .split("\n")
+      .filter(Boolean);
+
+    return res.json({
+      success: true,
+      data: logs
+    });
+
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Failed to read history"
+    });
+  }
+};
