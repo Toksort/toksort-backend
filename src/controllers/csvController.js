@@ -44,11 +44,11 @@ const normalizeVariant = (variant) => {
     .trim()
     .toUpperCase();
 
-  // default → A5
+  // ✅ hanya exact DEFAULT
   if (text === "DEFAULT") return "A5";
 
-  // 🔥 regex fix (anti salah detect)
-  const match = text.match(/\bA(2[0]|1[0-9]|[2-9])\b/);
+  // ✅ hanya ambil kalau jelas format A + angka
+  const match = text.match(/(?:^|[^A-Z0-9])A(2[0]|1[0-9]|[2-9])(?:[^0-9]|$)/);
 
   if (match) {
     return `A${match[1]}`;
@@ -82,26 +82,14 @@ const getStatusFromTime = (createdTime) => {
 // CLEANER FUNCTION (REUSABLE)
 // =======================
 const transformData = (rawData) => {
+  if (!Array.isArray(rawData) || rawData.length === 0) {
+    return [];
+  }
+
   return rawData.map((row) => {
     const rawVariant = row["variation"];
 
-    console.log("RAW VAR:", rawVariant);
-
-    if (!Array.isArray(rawData) || rawData.length === 0) {
-      return [];
-    }
-
-    if (!rawVariant || rawVariant === "") {
-      console.warn("⚠️ VARIATION KOSONG:", row);
-    }
-
     const normalized = normalizeVariant(rawVariant);
-
-    if (normalized !== "unknown") {
-      console.log("✅ VALID VAR:", rawVariant);
-    } else {
-      console.log("❌ INVALID VAR:", rawVariant);
-    }
 
     return {
       order_id: row["order id"] ?? null,
@@ -115,15 +103,32 @@ const transformData = (rawData) => {
 };
 // const transformData = (rawData) => {
 //   return rawData.map((row) => {
+//     const rawVariant = row["variation"];
+
+//     console.log("RAW VAR:", rawVariant);
+
+//     if (!Array.isArray(rawData) || rawData.length === 0) {
+//       return [];
+//     }
+
+//     if (!rawVariant || rawVariant === "") {
+//       console.warn("⚠️ VARIATION KOSONG:", row);
+//     }
+
+//     const normalized = normalizeVariant(rawVariant);
+
+//     if (normalized !== "unknown") {
+//       console.log("✅ VALID VAR:", rawVariant);
+//     } else {
+//       console.log("❌ INVALID VAR:", rawVariant);
+//     }
+
 //     return {
 //       order_id: row["order id"] ?? null,
 //       product_name: row["product name"] ?? null,
-
 //       quantity: parseInt(row["quantity"]) || 0,
-//       variation: normalizeVariant(row["variation"]),
-
+//       variation: normalized,
 //       created_time: row["created time"] ?? null,
-
 //       ...getStatusFromTime(row["created time"])
 //     };
 //   });
