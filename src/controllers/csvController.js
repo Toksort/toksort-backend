@@ -57,8 +57,6 @@ const normalizeVariant = (variant) => {
   return "unknown";
 };
 
-console.log("RAW VAR:", row["variation"]);
-
 // =======================
 // STATUS LOGIC 🔥
 // =======================
@@ -88,6 +86,10 @@ const transformData = (rawData) => {
     const rawVariant = row["variation"];
 
     console.log("RAW VAR:", rawVariant);
+
+    if (!Array.isArray(rawData) || rawData.length === 0) {
+      return [];
+    }
 
     if (!rawVariant || rawVariant === "") {
       console.warn("⚠️ VARIATION KOSONG:", row);
