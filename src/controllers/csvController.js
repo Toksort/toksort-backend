@@ -38,16 +38,26 @@ const allowedVariants = [
 const normalizeVariant = (variant) => {
   if (!variant) return "unknown";
 
-  const text = variant.replace(/\s+/g, " ").toUpperCase();
+  const text = variant
+    .toString()
+    .replace(/\s+/g, " ")
+    .trim()
+    .toUpperCase();
 
+  // default → A5
   if (text === "DEFAULT") return "A5";
 
-  for (let v of allowedVariants) {
-    if (text.includes(v)) return v;
+  // 🔥 regex fix (anti salah detect)
+  const match = text.match(/\bA(2[0]|1[0-9]|[2-9])\b/);
+
+  if (match) {
+    return `A${match[1]}`;
   }
 
   return "unknown";
 };
+
+console.log("RAW VAR:", row["variation"]);
 
 // =======================
 // STATUS LOGIC 🔥
@@ -75,44 +85,45 @@ const getStatusFromTime = (createdTime) => {
 // =======================
 const transformData = (rawData) => {
   return rawData.map((row) => {
+    const rawVariant = row["variation"];
+
+    console.log("RAW VAR:", rawVariant);
+
+    if (!rawVariant || rawVariant === "") {
+      console.warn("⚠️ VARIATION KOSONG:", row);
+    }
+
+    const normalized = normalizeVariant(rawVariant);
+
+    if (normalized !== "unknown") {
+      console.log("✅ VALID VAR:", rawVariant);
+    } else {
+      console.log("❌ INVALID VAR:", rawVariant);
+    }
+
     return {
       order_id: row["order id"] ?? null,
       product_name: row["product name"] ?? null,
-
       quantity: parseInt(row["quantity"]) || 0,
-      variation: normalizeVariant(row["variation"]),
-
+      variation: normalized,
       created_time: row["created time"] ?? null,
-
       ...getStatusFromTime(row["created time"])
     };
   });
 };
 // const transformData = (rawData) => {
 //   return rawData.map((row) => {
-//     const filtered = {};
+//     return {
+//       order_id: row["order id"] ?? null,
+//       product_name: row["product name"] ?? null,
 
-//     allowedHeaders.forEach((header) => {
-//       const newKey = headerMap[header];
+//       quantity: parseInt(row["quantity"]) || 0,
+//       variation: normalizeVariant(row["variation"]),
 
-//       if (header === "quantity") {
-//         filtered[newKey] = parseInt(row[header]) || 0;
+//       created_time: row["created time"] ?? null,
 
-//       } else if (header === "variation") {
-//         filtered[newKey] = normalizeVariant(row[header]);
-
-//       } else {
-//         filtered[newKey] = row[header] ?? null;
-//       }
-//     });
-
-//     const { order_status, shipping_status } =
-//       getStatusFromTime(row["created time"]);
-
-//     filtered.order_status = order_status;
-//     filtered.shipping_status = shipping_status;
-
-//     return filtered;
+//       ...getStatusFromTime(row["created time"])
+//     };
 //   });
 // };
 
