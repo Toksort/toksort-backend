@@ -56,18 +56,6 @@ const normalizeVariant = (variant) => {
   return "unknown";
 };
 
-const targetShipping = normalizeShipping(shipping_status);
-
-cleanedData = cleanedData.map(item => {
-  if (
-    item.variation === variation &&
-    normalizeShipping(item.shipping_status) === targetShipping
-  ) {
-    return { ...item, status: "done" };
-  }
-  return item;
-});
-
 // STATUS LOGIC 🔥
 const getStatusFromTime = (createdTime) => {
   if (!createdTime) {
@@ -410,6 +398,17 @@ export const getCSVHistory = (req, res) => {
       message: "Failed to read history"
     });
   }
+};
+
+const normalizeShipping = (val) => {
+  if (!val) return "";
+
+  val = val.toLowerCase();
+
+  if (val.includes("hari ini") || val === "today") return "today";
+  if (val.includes("besok") || val === "tomorrow") return "tomorrow";
+
+  return val;
 };
 
 export const completeGroup = async (req, res) => {
