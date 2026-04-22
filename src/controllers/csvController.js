@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import parseCSV from "../utils/csvParser.js";
+import { writeCSV } from "../utils/writeCSV.js";
 import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -27,9 +28,7 @@ const headerMap = {
   "product category": "product_category"
 };
 
-// =======================
 // VARIANT NORMALIZER 🔥
-// =======================
 const allowedVariants = [
   "A2","A3","A4","A5","A6","A7","A8","A9",
   "A10","A11","A12","A13","A14","A15","A16","A17","A18","A19","A20"
@@ -57,9 +56,19 @@ const normalizeVariant = (variant) => {
   return "unknown";
 };
 
-// =======================
+const targetShipping = normalizeShipping(shipping_status);
+
+cleanedData = cleanedData.map(item => {
+  if (
+    item.variation === variation &&
+    normalizeShipping(item.shipping_status) === targetShipping
+  ) {
+    return { ...item, status: "done" };
+  }
+  return item;
+});
+
 // STATUS LOGIC 🔥
-// =======================
 const getStatusFromTime = (createdTime) => {
   if (!createdTime) {
     return { order_status: "unknown", shipping_status: "unknown" };
@@ -78,9 +87,7 @@ const getStatusFromTime = (createdTime) => {
   };
 };
 
-// =======================
 // CLEANER FUNCTION (REUSABLE)
-// =======================
 const transformData = (rawData) => {
   if (!Array.isArray(rawData) || rawData.length === 0) {
     return [];
@@ -91,52 +98,28 @@ const transformData = (rawData) => {
 
     const normalized = normalizeVariant(rawVariant);
 
+    // return {
+    //   order_id: row["order id"] ?? null,
+    //   product_name: row["product name"] ?? null,
+    //   quantity: parseInt(row["quantity"]) || 0,
+    //   variation: normalized,
+    //   created_time: row["created time"] ?? null,
+    //   ...getStatusFromTime(row["created time"])
+    // };
     return {
+      id: `${row["order id"]}-${index}`, 
       order_id: row["order id"] ?? null,
       product_name: row["product name"] ?? null,
       quantity: parseInt(row["quantity"]) || 0,
-      variation: normalized,
+      variation: normalizeVariant(row["variation"]),
       created_time: row["created time"] ?? null,
-      ...getStatusFromTime(row["created time"])
+      ...getStatusFromTime(row["created time"]),
+      status: "pending"
     };
   });
 };
-// const transformData = (rawData) => {
-//   return rawData.map((row) => {
-//     const rawVariant = row["variation"];
 
-//     console.log("RAW VAR:", rawVariant);
-
-//     if (!Array.isArray(rawData) || rawData.length === 0) {
-//       return [];
-//     }
-
-//     if (!rawVariant || rawVariant === "") {
-//       console.warn("⚠️ VARIATION KOSONG:", row);
-//     }
-
-//     const normalized = normalizeVariant(rawVariant);
-
-//     if (normalized !== "unknown") {
-//       console.log("✅ VALID VAR:", rawVariant);
-//     } else {
-//       console.log("❌ INVALID VAR:", rawVariant);
-//     }
-
-//     return {
-//       order_id: row["order id"] ?? null,
-//       product_name: row["product name"] ?? null,
-//       quantity: parseInt(row["quantity"]) || 0,
-//       variation: normalized,
-//       created_time: row["created time"] ?? null,
-//       ...getStatusFromTime(row["created time"])
-//     };
-//   });
-// };
-
-// =======================
 // UPLOAD CSV
-// =======================
 export const uploadCSV = async (req, res) => {
   try {
     if (req.fileValidationError) {
@@ -185,9 +168,7 @@ export const uploadCSV = async (req, res) => {
   }
 };
 
-// =======================
 // READ CSV
-// =======================
 export const readCSV = async (req, res) => {
   try {
     const { filename } = req.params;
@@ -223,9 +204,7 @@ export const readCSV = async (req, res) => {
   }
 };
 
-// =======================
 // GET LATEST CSV
-// =======================
 export const readLatestCSV = async (req, res) => {
   try {
     const uploadDir = path.join(__dirname, "../uploads");
@@ -246,32 +225,27 @@ export const readLatestCSV = async (req, res) => {
     );
 
     const latestFile = files[0];
-    const filePath = path.join(uploadDir, latestFile);
 
-    const rawData = await parseCSV(filePath);
-    const cleanedData = transformData(rawData);
+    const rawData = await parseCSV(path.join(uploadDir, latestFile));
+    let cleanedData = transformData(rawData);
+
+    // 🔥 FILTER DI SINI
+    cleanedData = filterData(cleanedData, req.query);
+    cleanedData = cleanedData.filter(item => item.status !== "done");
 
     return res.json({
       success: true,
-      message: "Latest file fetched",
-      data: {
-        filename: latestFile,
-        totalRows: cleanedData.length,
-        rows: cleanedData
-      }
+      filename: latestFile,
+      totalRows: cleanedData.length,
+      data: cleanedData
     });
 
   } catch (err) {
-    return res.status(500).json({
-      success: false,
-      message: "Error reading latest file"
-    });
+    return res.status(500).json({ error: "error" });
   }
 };
 
-// =======================
 // SUMMARY 🔥
-// =======================
 export const getSummary = async (req, res) => {
   try {
     const uploadDir = path.join(__dirname, "../uploads");
@@ -352,9 +326,7 @@ export const getAllFiles = (req, res) => {
   }
 };
 
-// =======================
 // DELETE FILE
-// =======================
 export const deleteFile = (req, res) => {
   try {
     let { filename } = req.params;
@@ -387,9 +359,7 @@ export const deleteFile = (req, res) => {
   }
 };
 
-// =======================
-// DELETE ALL 🔥
-// =======================
+// DELETE ALL
 export const deleteAllFiles = (req, res) => {
   try {
     const uploadDir = path.join(__dirname, "../uploads");
@@ -440,4 +410,101 @@ export const getCSVHistory = (req, res) => {
       message: "Failed to read history"
     });
   }
+};
+
+export const completeGroup = async (req, res) => {
+  try {
+    const { filename, variation, shipping_status } = req.body;
+
+    if (!filename || !variation || !shipping_status) {
+      return res.status(400).json({
+        success: false,
+        message: "filename, variation, shipping_status required"
+      });
+    }
+
+    const filePath = path.join(__dirname, "../uploads", filename);
+
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({
+        success: false,
+        message: "File not found"
+      });
+    }
+
+    const rawData = await parseCSV(filePath);
+    let cleanedData = transformData(rawData);
+
+    const normalizeShipping = (val) => {
+      if (!val) return "";
+
+      val = val.toLowerCase();
+
+      if (val.includes("hari ini") || val === "today") return "today";
+      if (val.includes("besok") || val === "tomorrow") return "tomorrow";
+
+      return val;
+    };
+
+    const targetShipping = normalizeShipping(shipping_status);
+
+    // 🔥 UPDATE STATUS DI SINI
+    cleanedData = cleanedData.map(item => {
+      if (
+        item.variation === variation &&
+        normalizeShipping(item.shipping_status) === targetShipping
+      ) {
+        return { ...item, status: "done" };
+      }
+      return item;
+    });
+
+    writeCSV(filePath, cleanedData);
+
+    return res.json({
+      success: true,
+      message: `${variation} (${shipping_status}) marked as done`
+    });
+
+  } catch (error) {
+    console.error("completeGroup error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update status"
+    });
+  }
+};
+
+const filterData = (data, query) => {
+  let result = [...data];
+
+  // 🔥 filter variation (A2-A20)
+  if (query.variation) {
+    result = result.filter(item =>
+      item.variation === query.variation.toUpperCase()
+    );
+  }
+
+  // 🔥 filter shipping (today / tomorrow)
+  // if (query.shipping_status) {
+  //   result = result.filter(item =>
+  //     item.shipping_status === query.shipping_status
+  //   );
+  // }
+  if (query.shipping_status) {
+    const target = normalizeShipping(query.shipping_status);
+
+    result = result.filter(item =>
+      normalizeShipping(item.shipping_status) === target
+    );
+  }
+
+  // 🔥 filter order status
+  if (query.order_status) {
+    result = result.filter(item =>
+      item.order_status === query.order_status
+    );
+  }
+
+  return result;
 };

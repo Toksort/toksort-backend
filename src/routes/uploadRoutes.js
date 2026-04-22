@@ -1,5 +1,6 @@
 import express from "express";
 import upload from "../utils/multerConfig.js";
+import {completeGroup} from "../controllers/csvController.js";
 import {
   uploadCSV,
   getCSVHistory,
@@ -184,5 +185,7 @@ router.delete("/delete/:filename", deleteFile);
  *         description: All files deleted
  */
 router.delete("/delete-all", deleteAllFiles);
+
+router.post("/complete-group", completeGroup);
 
 export default router;
