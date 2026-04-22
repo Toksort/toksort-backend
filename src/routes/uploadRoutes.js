@@ -186,6 +186,45 @@ router.delete("/delete/:filename", deleteFile);
  */
 router.delete("/delete-all", deleteAllFiles);
 
+/**
+ * @swagger
+ * /api/complete-group:
+ *   post:
+ *     summary: Tandai group (variation + shipping) sebagai selesai
+ *     tags: [CSV]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - filename
+ *               - variation
+ *               - shipping_status
+ *             properties:
+ *               filename:
+ *                 type: string
+ *                 example: data-180426-v1.csv
+ *               variation:
+ *                 type: string
+ *                 example: A5
+ *               shipping_status:
+ *                 type: string
+ *                 example: Kirim Hari ini
+ *     responses:
+ *       200:
+ *         description: Group berhasil ditandai selesai
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               message: A5 (Kirim Hari ini) marked as done
+ *       400:
+ *         description: Request tidak valid
+ *       404:
+ *         description: File tidak ditemukan
+ */
 router.post("/complete-group", completeGroup);
 
 export default router;
