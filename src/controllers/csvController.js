@@ -81,31 +81,41 @@ const transformData = (rawData) => {
     return [];
   }
 
-  return rawData.map((row) => {
-    const rawVariant = row["variation"];
+  return rawData.map((row, index) => { // ✅ TAMBAH index DI SINI
+    const normalized = normalizeVariant(row["variation"]);
 
-    const normalized = normalizeVariant(rawVariant);
-
-    // return {
-    //   order_id: row["order id"] ?? null,
-    //   product_name: row["product name"] ?? null,
-    //   quantity: parseInt(row["quantity"]) || 0,
-    //   variation: normalized,
-    //   created_time: row["created time"] ?? null,
-    //   ...getStatusFromTime(row["created time"])
-    // };
     return {
-      id: `${row["order id"]}-${index}`, 
+      id: index, // (opsional, kalau mau dipakai)
       order_id: row["order id"] ?? null,
       product_name: row["product name"] ?? null,
       quantity: parseInt(row["quantity"]) || 0,
-      variation: normalizeVariant(row["variation"]),
+      variation: normalized,
       created_time: row["created time"] ?? null,
       ...getStatusFromTime(row["created time"]),
       status: "pending"
     };
   });
 };
+// const transformData = (rawData) => {
+//   if (!Array.isArray(rawData) || rawData.length === 0) {
+//     return [];
+//   }
+
+//   return rawData.map((row) => {
+//     const rawVariant = row["variation"];
+
+//     const normalized = normalizeVariant(rawVariant);
+
+//     return {
+//       order_id: row["order id"] ?? null,
+//       product_name: row["product name"] ?? null,
+//       quantity: parseInt(row["quantity"]) || 0,
+//       variation: normalized,
+//       created_time: row["created time"] ?? null,
+//       ...getStatusFromTime(row["created time"])
+//     };
+//   });
+// };
 
 // UPLOAD CSV
 export const uploadCSV = async (req, res) => {
