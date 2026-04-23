@@ -7,3 +7,4 @@ export const pool = new Pool({
     rejectUnauthorized: false, // wajib di Railway
   },
 });
+console.log("Using DB:", process.env.DATABASE_URL);
