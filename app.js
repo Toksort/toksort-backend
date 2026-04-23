@@ -4,7 +4,7 @@ import cors from "cors";
 import swaggerUi from "swagger-ui-express";
 import swaggerJSDoc from "swagger-jsdoc";
 import uploadRoutes from "./src/routes/uploadRoutes.js";
-import pool from "./src/db/database.js";
+import pool from "./src/config/db.js";
 import { createTable } from "./src/models/orderModel.js";
 
 const app = express();
