@@ -8,7 +8,6 @@ import {
   getSummary,
   completeGroup,
   getHistory,
-  getAllFiles,
   undoCompleteGroup 
 } from "../controllers/csvController.js";
 
@@ -160,15 +159,6 @@ router.get("/uploads", getHistory);
  * 📁 FILE SYSTEM (OPTIONAL)
  * =========================
  */
-
-/**
- * @swagger
- * /api/files:
- *   get:
- *     summary: List CSV files (optional debug)
- *     tags: [Files]
- */
-router.get("/files", getAllFiles);
 
 /**
  * @swagger
