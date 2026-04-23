@@ -348,31 +348,41 @@ export const getHistory = async (req, res) => {
 // SUMMARY (LATEST UPLOAD)
 export const getUploadSummary = async (req, res) => {
   try {
-    const { id } = req.params;
+    const latest = await pool.query(`
+      SELECT id FROM uploads ORDER BY created_at DESC LIMIT 1
+    `);
+
+    if (!latest.rows.length) {
+      return res.json({
+        success: true,
+        message: "Belum ada upload",
+        data: []
+      });
+    }
+
+    const upload_id = latest.rows[0].id;
 
     const result = await pool.query(`
       SELECT 
-        COUNT(*) as total_orders,
-        SUM(quantity) as total_quantity,
-        COUNT(*) FILTER (WHERE status = 'done') as completed
+        variation,
+        SUM(quantity)::int as total
       FROM orders
       WHERE upload_id = $1
-    `, [id]);
-
-    const row = result.rows[0];
+      AND status != 'done'
+      GROUP BY variation
+      ORDER BY variation ASC
+    `, [upload_id]);
 
     res.json({
       success: true,
-      upload_id: id,
-      data: {
-        total_orders: parseInt(row.total_orders),
-        total_quantity: parseInt(row.total_quantity),
-        completed: parseInt(row.completed)
-      }
+      upload_id,
+      total_variants: result.rows.length,
+      data: result.rows
     });
 
   } catch (err) {
-    res.status(500).json({ error: "failed summary" });
+    console.error(err);
+    res.status(500).json({ error: "summary failed" });
   }
 };
 
