@@ -9,8 +9,6 @@ import {
   completeGroup,
   getHistory,
   getAllFiles,
-  deleteFile,
-  deleteAllFiles,
   undoCompleteGroup 
 } from "../controllers/csvController.js";
 
@@ -171,30 +169,6 @@ router.get("/uploads", getHistory);
  *     tags: [Files]
  */
 router.get("/files", getAllFiles);
-
-/**
- * @swagger
- * /api/delete/{filename}:
- *   delete:
- *     summary: Delete specific CSV file
- *     tags: [Files]
- *     parameters:
- *       - in: path
- *         name: filename
- *         required: true
- *         schema:
- *           type: string
- */
-router.delete("/delete/:filename", deleteFile);
-
-/**
- * @swagger
- * /api/delete-all:
- *   delete:
- *     summary: Delete all CSV files
- *     tags: [Files]
- */
-router.delete("/delete-all", deleteAllFiles);
 
 /**
  * @swagger
