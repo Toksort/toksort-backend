@@ -2,31 +2,24 @@ import fs from "fs";
 import path from "path";
 import parseCSV from "../utils/csvParser.js";
 import { fileURLToPath } from "url";
-import { initDB } from "../config/db.js";
+import { pool } from "../config/db.js";
 import { createTable } from "../models/orderModel.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// VARIANT NORMALIZER
+// NORMALIZER
 const normalizeVariant = (variant) => {
   if (!variant) return "unknown";
 
-  const text = variant
-    .toString()
-    .replace(/\s+/g, " ")
-    .trim()
-    .toUpperCase();
+  const text = variant.toString().trim().toUpperCase();
 
   if (text === "DEFAULT") return "A5";
 
-  const match = text.match(/(?:^|[^A-Z0-9])A(2[0]|1[0-9]|[2-9])(?:[^0-9]|$)/);
-
+  const match = text.match(/A(2[0]|1[0-9]|[2-9])/);
   return match ? `A${match[1]}` : "unknown";
 };
 
-
-// SHIPPING NORMALIZER
 const mapShippingToDB = (val) => {
   if (!val) return "";
 
@@ -38,19 +31,12 @@ const mapShippingToDB = (val) => {
   return val;
 };
 
-
-// STATUS LOGIC
 const getStatusFromTime = (createdTime) => {
   if (!createdTime) {
     return { order_status: "unknown", shipping_status: "unknown" };
   }
 
-  const parts = createdTime.split(" ");
-  if (parts.length < 2) {
-    return { order_status: "unknown", shipping_status: "unknown" };
-  }
-
-  const hour = parseInt(parts[1].split(":")[0]);
+  const hour = parseInt(createdTime.split(" ")[1]?.split(":")[0]);
 
   return {
     order_status: hour < 12 ? "urgent" : "normal",
@@ -58,11 +44,8 @@ const getStatusFromTime = (createdTime) => {
   };
 };
 
-
-// TRANSFORM DATA
+// TRANSFORM
 const transformData = (rawData) => {
-  if (!Array.isArray(rawData)) return [];
-
   return rawData.map((row) => ({
     order_id: row["order id"] ?? null,
     product_name: row["product name"] ?? null,
@@ -74,46 +57,49 @@ const transformData = (rawData) => {
   }));
 };
 
-
-// UPLOAD CSV → DB
+// UPLOAD CSV → DB (MULTI UPLOAD)
 export const uploadCSV = async (req, res) => {
   try {
-    const db = await initDB();
-    await createTable(db);
+    await createTable();
 
     const filePath = path.join(__dirname, "../uploads", req.file.filename);
 
     const rawData = await parseCSV(filePath);
     const cleanedData = transformData(rawData);
 
-    // 🔥 HAPUS DATA LAMA BIAR GA DOUBLE
-    await db.run(`DELETE FROM orders`);
+    // 🔥 1. insert ke uploads
+    const uploadResult = await pool.query(
+      `INSERT INTO uploads (filename) VALUES ($1) RETURNING id`,
+      [req.file.filename]
+    );
 
-    const stmt = await db.prepare(`
-      INSERT INTO orders 
-      (order_id, product_name, quantity, variation, created_time, order_status, shipping_status, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `);
+    const upload_id = uploadResult.rows[0].id;
 
+    // 🔥 2. insert orders
     for (const item of cleanedData) {
-      await stmt.run(
-        item.order_id,
-        item.product_name,
-        item.quantity,
-        item.variation,
-        item.created_time,
-        item.order_status,
-        item.shipping_status,
-        item.status
+      await pool.query(
+        `INSERT INTO orders 
+        (upload_id, order_id, product_name, quantity, variation, created_time, order_status, shipping_status, status)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [
+          upload_id,
+          item.order_id,
+          item.product_name,
+          item.quantity,
+          item.variation,
+          item.created_time,
+          item.order_status,
+          item.shipping_status,
+          item.status
+        ]
       );
     }
 
-    await stmt.finalize();
-
     res.json({
       success: true,
+      upload_id,
       total: cleanedData.length,
-      message: "Upload & insert DB sukses 🔥"
+      message: "Upload sukses (multi batch ready 🚀)"
     });
 
   } catch (err) {
@@ -122,31 +108,121 @@ export const uploadCSV = async (req, res) => {
   }
 };
 
-
-// GET ORDERS (PENDING)
-export const getOrders = async (req, res) => {
+export const getUploads = async (req, res) => {
   try {
-    const db = await initDB();
-
-    let query = `SELECT * FROM orders WHERE status != 'done'`;
-    const params = [];
-
-    if (req.query.variation) {
-      query += ` AND variation = ?`;
-      params.push(req.query.variation.toUpperCase());
-    }
-
-    if (req.query.shipping_status) {
-      query += ` AND shipping_status = ?`;
-      params.push(mapShippingToDB(req.query.shipping_status));
-    }
-
-    const data = await db.all(query, params);
+    const result = await pool.query(`
+      SELECT id, filename, created_at
+      FROM uploads
+      ORDER BY created_at DESC
+    `);
 
     res.json({
       success: true,
-      total: data.length,
-      data
+      total: result.rows.length,
+      data: result.rows
+    });
+
+  } catch (err) {
+    res.status(500).json({ error: "failed get uploads" });
+  }
+};
+
+export const getUploadDetail = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const result = await pool.query(`
+      SELECT *
+      FROM orders
+      WHERE upload_id = $1
+      ORDER BY id ASC
+    `, [id]);
+
+    res.json({
+      success: true,
+      upload_id: id,
+      total: result.rows.length,
+      data: result.rows
+    });
+
+  } catch (err) {
+    res.status(500).json({ error: "failed get upload detail" });
+  }
+};
+
+export const getUploadGrouped = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const result = await pool.query(`
+      SELECT 
+        variation,
+        shipping_status,
+        COUNT(*) as total_orders,
+        SUM(quantity) as total_quantity,
+        COUNT(*) FILTER (WHERE status = 'done') as completed,
+        ROUND(
+          COUNT(*) FILTER (WHERE status = 'done') * 100.0 / COUNT(*),
+          2
+        ) as progress
+      FROM orders
+      WHERE upload_id = $1
+      GROUP BY variation, shipping_status
+      ORDER BY variation ASC
+    `, [id]);
+
+    res.json({
+      success: true,
+      upload_id: id,
+      total_groups: result.rows.length,
+      data: result.rows.map(r => ({
+        ...r,
+        total_orders: parseInt(r.total_orders),
+        total_quantity: parseInt(r.total_quantity),
+        completed: parseInt(r.completed),
+        progress: parseFloat(r.progress)
+      }))
+    });
+
+  } catch (err) {
+    res.status(500).json({ error: "failed grouped data" });
+  }
+};
+
+// GET ORDERS (LATEST UPLOAD)
+export const getOrders = async (req, res) => {
+  try {
+    // 🔥 ambil upload terbaru
+    const latest = await pool.query(`
+      SELECT id FROM uploads ORDER BY created_at DESC LIMIT 1
+    `);
+
+    if (!latest.rows.length) {
+      return res.json({ success: true, data: [] });
+    }
+
+    const upload_id = latest.rows[0].id;
+
+    let query = `SELECT * FROM orders WHERE upload_id = $1 AND status != 'done'`;
+    const values = [upload_id];
+
+    if (req.query.variation) {
+      values.push(req.query.variation.toUpperCase());
+      query += ` AND variation = $${values.length}`;
+    }
+
+    if (req.query.shipping_status) {
+      values.push(mapShippingToDB(req.query.shipping_status));
+      query += ` AND shipping_status = $${values.length}`;
+    }
+
+    const result = await pool.query(query, values);
+
+    res.json({
+      success: true,
+      upload_id,
+      total: result.rows.length,
+      data: result.rows
     });
 
   } catch (err) {
@@ -154,49 +230,95 @@ export const getOrders = async (req, res) => {
   }
 };
 
-
-// GET HISTORY (DONE)
-export const getHistory = async (req, res) => {
+export const getGroupedOrders = async (req, res) => {
   try {
-    const db = await initDB();
+    let upload_id = req.query.upload_id;
 
-    const data = await db.all(`
-      SELECT * FROM orders WHERE status = 'done'
-    `);
+    // 🔥 kalau ga dikirim → ambil latest
+    if (!upload_id) {
+      const latest = await pool.query(`
+        SELECT id FROM uploads ORDER BY created_at DESC LIMIT 1
+      `);
+
+      if (!latest.rows.length) {
+        return res.json({ success: true, data: [] });
+      }
+
+      upload_id = latest.rows[0].id;
+    }
+
+    const result = await pool.query(`
+      SELECT 
+        variation,
+        shipping_status,
+        COUNT(*) as total_orders,
+        SUM(quantity) as total_quantity
+      FROM orders
+      WHERE upload_id = $1
+      AND status != 'done'
+      GROUP BY variation, shipping_status
+      ORDER BY variation ASC
+    `, [upload_id]);
 
     res.json({
       success: true,
-      total: data.length,
-      data
+      upload_id,
+      total_groups: result.rows.length,
+      data: result.rows
     });
 
-  } catch {
-    res.status(500).json({ error: "failed get history" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "failed grouping orders" });
   }
 };
 
-
-// COMPLETE GROUP
+// COMPLETE GROUP 
 export const completeGroup = async (req, res) => {
   try {
-    const { variation, shipping_status } = req.body;
+    let { upload_id, variation, shipping_status } = req.body;
 
-    const db = await initDB();
+    if (!variation || !shipping_status) {
+      return res.status(400).json({
+        success: false,
+        message: "variation & shipping_status wajib diisi"
+      });
+    }
 
-    const result = await db.run(`
+    // 🔥 kalau upload_id ga dikirim → pakai latest
+    if (!upload_id) {
+      const latest = await pool.query(`
+        SELECT id FROM uploads ORDER BY created_at DESC LIMIT 1
+      `);
+
+      if (!latest.rows.length) {
+        return res.status(404).json({
+          success: false,
+          message: "Tidak ada data upload"
+        });
+      }
+
+      upload_id = latest.rows[0].id;
+    }
+
+    const result = await pool.query(`
       UPDATE orders
       SET status = 'done'
-      WHERE variation = ?
-      AND shipping_status = ?
+      WHERE upload_id = $1
+      AND variation = $2
+      AND shipping_status = $3
+      AND status != 'done'
     `, [
+      upload_id,
       variation.toUpperCase(),
       mapShippingToDB(shipping_status)
     ]);
 
-    res.json({
+    return res.json({
       success: true,
-      updated: result.changes,
-      message: "Group completed 🔥"
+      upload_id,
+      updated: result.rowCount,
+      message: `${variation} - ${shipping_status} completed 🔥`
     });
 
   } catch (err) {
@@ -205,75 +327,90 @@ export const completeGroup = async (req, res) => {
   }
 };
 
-
-// SUMMARY
-export const getSummary = async (req, res) => {
+// HISTORY (ALL UPLOADS)
+export const getHistory = async (req, res) => {
   try {
-    const db = await initDB();
-
-    const rows = await db.all(`
-      SELECT variation, SUM(quantity) as total
-      FROM orders
-      WHERE status != 'done'
-      GROUP BY variation
+    const result = await pool.query(`
+      SELECT * FROM uploads ORDER BY created_at DESC
     `);
 
     res.json({
       success: true,
-      data: rows
+      data: result.rows
     });
 
   } catch {
-    res.status(500).json({ error: "summary failed" });
+    res.status(500).json({ error: "failed get history" });
   }
 };
 
 
-// FILE UTIL (OPTIONAL)
-export const getAllFiles = (req, res) => {
+// SUMMARY (LATEST UPLOAD)
+export const getUploadSummary = async (req, res) => {
   try {
-    const files = fs.readdirSync(path.join(__dirname, "../uploads"))
-      .filter(f => f.endsWith(".csv"));
+    const { id } = req.params;
 
-    res.json({ success: true, data: files });
+    const result = await pool.query(`
+      SELECT 
+        COUNT(*) as total_orders,
+        SUM(quantity) as total_quantity,
+        COUNT(*) FILTER (WHERE status = 'done') as completed
+      FROM orders
+      WHERE upload_id = $1
+    `, [id]);
 
-  } catch {
-    res.status(500).json({ success: false });
+    const row = result.rows[0];
+
+    res.json({
+      success: true,
+      upload_id: id,
+      data: {
+        total_orders: parseInt(row.total_orders),
+        total_quantity: parseInt(row.total_quantity),
+        completed: parseInt(row.completed)
+      }
+    });
+
+  } catch (err) {
+    res.status(500).json({ error: "failed summary" });
   }
 };
 
-export const deleteFile = (req, res) => {
+export const undoCompleteGroup = async (req, res) => {
   try {
-    let { filename } = req.params;
+    const { upload_id, variation, shipping_status } = req.body;
 
-    if (!filename.endsWith(".csv")) filename += ".csv";
-
-    const filePath = path.join(__dirname, "../uploads", filename);
-
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ success: false });
+    if (!upload_id || !variation || !shipping_status) {
+      return res.status(400).json({
+        success: false,
+        message: "upload_id, variation, shipping_status wajib diisi"
+      });
     }
 
-    fs.unlinkSync(filePath);
+    const result = await pool.query(`
+      UPDATE orders
+      SET status = 'pending'
+      WHERE upload_id = $1
+      AND variation = $2
+      AND shipping_status = $3
+      AND status = 'done'
+    `, [
+      upload_id,
+      variation.toUpperCase(),
+      mapShippingToDB(shipping_status)
+    ]);
 
-    res.json({ success: true });
+    res.json({
+      success: true,
+      updated: result.rowCount,
+      message: "Undo complete berhasil 🔄"
+    });
 
-  } catch {
-    res.status(500).json({ success: false });
-  }
-};
-
-export const deleteAllFiles = (req, res) => {
-  try {
-    const dir = path.join(__dirname, "../uploads");
-
-    fs.readdirSync(dir).forEach(f =>
-      fs.unlinkSync(path.join(dir, f))
-    );
-
-    res.json({ success: true });
-
-  } catch {
-    res.status(500).json({ success: false });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      success: false,
+      message: "Undo failed"
+    });
   }
 };

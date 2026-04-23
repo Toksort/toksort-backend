@@ -1,31 +1,45 @@
 import express from "express";
 import upload from "../utils/multerConfig.js";
+
 import {
   uploadCSV,
-  getCSVHistory,
-  readCSV,
+  getOrders,
+  getGroupedOrders,
+  getSummary,
+  completeGroup,
+  getHistory,
+  getAllFiles,
   deleteFile,
   deleteAllFiles,
-  getAllFiles,
-  getOrders,
-  getSummary,
-  completeGroup
+  undoCompleteGroup 
 } from "../controllers/csvController.js";
+
+import { deleteOldFiles, checkDailyLimit } from "../utils/fileCleaner.js";
 
 const router = express.Router();
 
 /**
  * @swagger
  * tags:
- *   name: Orders
- *   description: Order Management API (CSV + SQLite)
+ *   - name: Orders
+ *     description: Order Management (PostgreSQL)
+ *   - name: Uploads
+ *     description: Upload & batch history
+ *   - name: Files
+ *     description: File system (optional)
+ */
+
+/**
+ * =========================
+ * 🔥 ORDERS
+ * =========================
  */
 
 /**
  * @swagger
  * /api/orders:
  *   get:
- *     summary: Ambil semua order (dari database)
+ *     summary: Get orders (latest upload by default)
  *     tags: [Orders]
  *     parameters:
  *       - in: query
@@ -46,35 +60,31 @@ router.get("/orders", getOrders);
 
 /**
  * @swagger
- * /api/upload:
- *   post:
- *     summary: Upload file CSV ke database
+ * /api/grouped-orders:
+ *   get:
+ *     summary: Get grouped orders (variation + shipping)
  *     tags: [Orders]
+ *     parameters:
+ *       - in: query
+ *         name: upload_id
+ *         schema:
+ *           type: integer
+ *         example: 1
+ *     responses:
+ *       200:
+ *         description: Success
  */
-router.post(
-  "/upload",
-  (req, res, next) => {
-    deleteOldFiles();
-
-    if (checkDailyLimit()) {
-      return res.status(429).json({
-        success: false,
-        message: "Upload limit reached (max 10 files/day)",
-      });
-    }
-
-    next();
-  },
-  upload.single("file"),
-  uploadCSV
-);
+router.get("/grouped-orders", getGroupedOrders);
 
 /**
  * @swagger
  * /api/summary:
  *   get:
- *     summary: Summary order (group by variation)
+ *     summary: Summary quantity per variation
  *     tags: [Orders]
+ *     responses:
+ *       200:
+ *         description: Success
  */
 router.get("/summary", getSummary);
 
@@ -82,7 +92,7 @@ router.get("/summary", getSummary);
  * @swagger
  * /api/complete-group:
  *   post:
- *     summary: Tandai group sebagai selesai
+ *     summary: Complete 1 group (1 klik dari FE)
  *     tags: [Orders]
  *     requestBody:
  *       required: true
@@ -94,23 +104,72 @@ router.get("/summary", getSummary);
  *               - variation
  *               - shipping_status
  *             properties:
+ *               upload_id:
+ *                 type: integer
+ *                 example: 1
  *               variation:
  *                 type: string
  *                 example: A5
  *               shipping_status:
  *                 type: string
- *                 example: today
+ *                 example: Kirim Hari ini
  *     responses:
  *       200:
- *         description: Berhasil update status
+ *         description: Group completed
  */
 router.post("/complete-group", completeGroup);
+
+/**
+ * =========================
+ * 🚀 UPLOAD
+ * =========================
+ */
+
+/**
+ * @swagger
+ * /api/upload:
+ *   post:
+ *     summary: Upload CSV → insert ke database (multi batch)
+ *     tags: [Uploads]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Upload success
+ */
+router.post("/upload", upload.single("file"), uploadCSV);
+
+/**
+ * @swagger
+ * /api/uploads:
+ *   get:
+ *     summary: Get upload history (batch list)
+ *     tags: [Uploads]
+ *     responses:
+ *       200:
+ *         description: Success
+ */
+router.get("/uploads", getHistory);
+
+/**
+ * =========================
+ * 📁 FILE SYSTEM (OPTIONAL)
+ * =========================
+ */
 
 /**
  * @swagger
  * /api/files:
  *   get:
- *     summary: List file CSV (opsional)
+ *     summary: List CSV files (optional debug)
  *     tags: [Files]
  */
 router.get("/files", getAllFiles);
@@ -119,8 +178,14 @@ router.get("/files", getAllFiles);
  * @swagger
  * /api/delete/{filename}:
  *   delete:
- *     summary: Hapus file CSV
+ *     summary: Delete specific CSV file
  *     tags: [Files]
+ *     parameters:
+ *       - in: path
+ *         name: filename
+ *         required: true
+ *         schema:
+ *           type: string
  */
 router.delete("/delete/:filename", deleteFile);
 
@@ -128,18 +193,41 @@ router.delete("/delete/:filename", deleteFile);
  * @swagger
  * /api/delete-all:
  *   delete:
- *     summary: Hapus semua file CSV
+ *     summary: Delete all CSV files
  *     tags: [Files]
  */
 router.delete("/delete-all", deleteAllFiles);
 
 /**
  * @swagger
- * /api/history:
- *   get:
- *     summary: History upload CSV
- *     tags: [Files]
+ * /api/undo-group:
+ *   post:
+ *     summary: Undo group (balikin ke pending)
+ *     tags: [Orders]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - upload_id
+ *               - variation
+ *               - shipping_status
+ *             properties:
+ *               upload_id:
+ *                 type: integer
+ *                 example: 1
+ *               variation:
+ *                 type: string
+ *                 example: A5
+ *               shipping_status:
+ *                 type: string
+ *                 example: Kirim Hari ini
+ *     responses:
+ *       200:
+ *         description: Undo success
  */
-router.get("/history", getCSVHistory);
+router.post("/undo-group", undoCompleteGroup);
 
 export default router;

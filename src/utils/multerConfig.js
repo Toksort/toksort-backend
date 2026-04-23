@@ -50,8 +50,8 @@ const storage = multer.diskStorage({
     cb(null, uploadPath);
   },
   filename: (req, file, cb) => {
-    const filename = generateVersionedFilename();
-    cb(null, filename);
+    const uniqueName = `data-${Date.now()}.csv`;
+    cb(null, uniqueName);
   },
 });
 
