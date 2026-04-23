@@ -5,7 +5,7 @@ import {
   uploadCSV,
   getOrders,
   getGroupedOrders,
-  getSummary,
+  getUploadSummary,
   completeGroup,
   getHistory,
   undoCompleteGroup 
@@ -81,7 +81,7 @@ router.get("/grouped-orders", getGroupedOrders);
  *       200:
  *         description: Success
  */
-router.get("/summary", getSummary);
+router.get("/summary", getUploadSummary);
 
 /**
  * @swagger
