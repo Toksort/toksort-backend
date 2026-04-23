@@ -38,12 +38,18 @@ app.use("/api", uploadRoutes);
 
 const start = async () => {
   try {
-    await createTable(); // ✅ boleh di sini
+    console.log("🚀 Starting app...");
+
+    await createTable(); // 🔥 sekarang TANPA param
+
+    console.log("🔥 DB ready");
+
     app.listen(PORT, () => {
-      console.log("Server running 🚀");
+      console.log(`🚀 Server running on port ${PORT}`);
     });
+
   } catch (err) {
-    console.error("DB error:", err);
+    console.error("❌ START ERROR:", err);
   }
 };
 
