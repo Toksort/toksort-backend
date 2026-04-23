@@ -3,46 +3,20 @@ import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
 
-// 🔥 biar bisa pakai __dirname di ESM
+// SETUP PATH (ESM SAFE)
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// ✅ pastikan folder uploads ada
 const uploadPath = path.join(__dirname, "../uploads");
 
+// ✅ pastikan folder ada
 if (!fs.existsSync(uploadPath)) {
   fs.mkdirSync(uploadPath, { recursive: true });
 }
 
-// 🔥 storage
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadPath); // ✅ pakai absolute path
-  },
-  filename: (req, file, cb) => {
-    const uniqueName = Date.now() + path.extname(file.originalname);
-    cb(null, uniqueName);
-  },
-});
-
-// 🔥 filter hanya CSV
-const fileFilter = (req, file, cb) => {
-  const ext = path.extname(file.originalname).toLowerCase();
-
-  if (ext === ".csv") {
-    cb(null, true);
-  } else {
-    req.fileValidationError = "Only CSV files are allowed";
-    cb(null, false);
-  }
-};
-
-const upload = multer({ storage, fileFilter });
-
-export default upload;
-
-// Generate nama file otomatis: data-DDMMYY-vX.csv
-function generateVersionedFilename() {
+// GENERATE NAMA FILE
+// data-DDMMYY-vX.csv
+const generateVersionedFilename = () => {
   const now = new Date();
 
   const day = String(now.getDate()).padStart(2, "0");
@@ -51,14 +25,12 @@ function generateVersionedFilename() {
 
   const baseName = `data-${day}${month}${shortYear}`;
 
-  // Cari versi yang sudah ada
   const files = fs.readdirSync(uploadPath);
 
-  // Filter semua file yang match date sekarang
   const matchingFiles = files.filter(f => f.startsWith(baseName));
 
-  // Cari version number tertinggi
   let maxVersion = 0;
+
   matchingFiles.forEach(f => {
     const match = f.match(/v(\d+)/);
     if (match) {
@@ -67,8 +39,43 @@ function generateVersionedFilename() {
     }
   });
 
-  // Version baru
   const newVersion = maxVersion + 1;
 
   return `${baseName}-v${newVersion}.csv`;
-}
+};
+
+// STORAGE CONFIG
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadPath);
+  },
+  filename: (req, file, cb) => {
+    const filename = generateVersionedFilename();
+    cb(null, filename);
+  },
+});
+
+// FILE FILTER (AMAN)
+const fileFilter = (req, file, cb) => {
+  const ext = path.extname(file.originalname).toLowerCase();
+  const mime = file.mimetype;
+
+  // ✅ validasi double (extension + mimetype)
+  if (ext === ".csv" && mime.includes("csv")) {
+    cb(null, true);
+  } else {
+    req.fileValidationError = "Only valid CSV files are allowed";
+    cb(null, false);
+  }
+};
+
+// MULTER INSTANCE
+const upload = multer({
+  storage,
+  fileFilter,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB max
+  },
+});
+
+export default upload;

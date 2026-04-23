@@ -18,9 +18,13 @@ export default function parseCSV(filePath) {
             typeof value === "string" ? value.trim() : value ?? null;
         });
 
+        if (!Object.values(cleanRow).some(v => v)) return;
+
         results.push(cleanRow);
       })
       .on("end", () => resolve(results))
-      .on("error", (err) => reject(err));
+      .on("error", (err) =>
+        reject(new Error("CSV parse error: " + err.message))
+      );
   });
 }

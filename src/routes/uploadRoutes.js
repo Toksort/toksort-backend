@@ -1,6 +1,5 @@
 import express from "express";
 import upload from "../utils/multerConfig.js";
-import {completeGroup} from "../controllers/csvController.js";
 import {
   uploadCSV,
   getCSVHistory,
@@ -8,8 +7,9 @@ import {
   deleteFile,
   deleteAllFiles,
   getAllFiles,
-  readLatestCSV,
-  getSummary
+  getOrders,
+  getSummary,
+  completeGroup
 } from "../controllers/csvController.js";
 import { deleteOldFiles, checkDailyLimit } from "../utils/fileCleaner.js";
 
@@ -18,68 +18,39 @@ const router = express.Router();
 /**
  * @swagger
  * tags:
- *   name: CSV
- *   description: CSV Management API
+ *   name: Orders
+ *   description: Order Management API (CSV + SQLite)
  */
 
 /**
  * @swagger
- * /api/files:
+ * /api/orders:
  *   get:
- *     summary: Ambil semua file CSV
- *     tags: [CSV]
- *     responses:
- *       200:
- *         description: List file
- *         content:
- *           application/json:
- *             example:
- *               success: true
- *               data:
- *                 - data-130426-v1.csv
- *                 - data-140426-v2.csv
- */
-router.get("/files", getAllFiles);
-
-/**
- * @swagger
- * /api/read-latest:
- *   get:
- *     summary: Ambil data CSV terbaru
- *     tags: [CSV]
+ *     summary: Ambil semua order (dari database)
+ *     tags: [Orders]
+ *     parameters:
+ *       - in: query
+ *         name: variation
+ *         schema:
+ *           type: string
+ *         example: A5
+ *       - in: query
+ *         name: shipping_status
+ *         schema:
+ *           type: string
+ *         example: today
  *     responses:
  *       200:
  *         description: Success
- *         content:
- *           application/json:
- *             example:
- *               success: true
- *               data:
- *                 filename: data-140426-v2.csv
- *                 totalRows: 120
- *                 rows: []
  */
-router.get("/read-latest", readLatestCSV);
+router.get("/orders", getOrders);
 
 /**
  * @swagger
  * /api/upload:
  *   post:
- *     summary: Upload file CSV
- *     tags: [CSV]
- *     requestBody:
- *       required: true
- *       content:
- *         multipart/form-data:
- *           schema:
- *             type: object
- *             properties:
- *               file:
- *                 type: string
- *                 format: binary
- *     responses:
- *       200:
- *         description: Upload berhasil
+ *     summary: Upload file CSV ke database
+ *     tags: [Orders]
  */
 router.post(
   "/upload",
@@ -101,97 +72,19 @@ router.post(
 
 /**
  * @swagger
- * /api/history:
- *   get:
- *     summary: Ambil history upload CSV
- *     tags: [CSV]
- */
-router.get("/history", getCSVHistory);
-
-/**
- * @swagger
- * /api/read/{filename}:
- *   get:
- *     summary: Ambil data CSV berdasarkan filename
- *     tags: [CSV]
- */
-router.get("/read/:filename", readCSV);
-
-/**
- * @swagger
- * /api/read/{filename}:
- *   get:
- *     summary: Ambil data CSV berdasarkan filename
- *     tags: [CSV]
- *     parameters:
- *       - in: path
- *         name: filename
- *         required: true
- *         schema:
- *           type: string
- *         example: data-130426-v5.csv
- *     responses:
- *       200:
- *         description: Success
- *         content:
- *           application/json:
- *             example:
- *               success: true
- *               data:
- *                 filename: data-130426-v5.csv
- *                 totalRows: 100
- *                 rows: []
- */
-
-/**
- * @swagger
  * /api/summary:
  *   get:
- *     summary: Get summary analytics from latest CSV
- *     tags: [Analytics]
- *     responses:
- *       200:
- *         description: Summary data
+ *     summary: Summary order (group by variation)
+ *     tags: [Orders]
  */
 router.get("/summary", getSummary);
 
 /**
  * @swagger
- * /api/delete/{filename}:
- *   delete:
- *     summary: Hapus file CSV
- *     tags: [CSV]
- *     parameters:
- *       - in: path
- *         name: filename
- *         required: true
- *         schema:
- *           type: string
- *         example: data-130426-v5.csv
- *     responses:
- *       200:
- *         description: File berhasil dihapus
- */
-router.delete("/delete/:filename", deleteFile);
-
-/**
- * @swagger
- * /api/delete-all:
- *   delete:
- *     summary: Delete all CSV files
- *     tags: [CSV]
- *     responses:
- *       200:
- *         description: All files deleted
- */
-router.delete("/delete-all", deleteAllFiles);
-
-/**
- * @swagger
  * /api/complete-group:
  *   post:
- *     summary: Tandai group (variation + shipping) sebagai selesai
- *     tags: [CSV]
+ *     summary: Tandai group sebagai selesai
+ *     tags: [Orders]
  *     requestBody:
  *       required: true
  *       content:
@@ -199,32 +92,55 @@ router.delete("/delete-all", deleteAllFiles);
  *           schema:
  *             type: object
  *             required:
- *               - filename
  *               - variation
  *               - shipping_status
  *             properties:
- *               filename:
- *                 type: string
- *                 example: data-180426-v1.csv
  *               variation:
  *                 type: string
  *                 example: A5
  *               shipping_status:
  *                 type: string
- *                 example: Kirim Hari ini
+ *                 example: today
  *     responses:
  *       200:
- *         description: Group berhasil ditandai selesai
- *         content:
- *           application/json:
- *             example:
- *               success: true
- *               message: A5 (Kirim Hari ini) marked as done
- *       400:
- *         description: Request tidak valid
- *       404:
- *         description: File tidak ditemukan
+ *         description: Berhasil update status
  */
 router.post("/complete-group", completeGroup);
+
+/**
+ * @swagger
+ * /api/files:
+ *   get:
+ *     summary: List file CSV (opsional)
+ *     tags: [Files]
+ */
+router.get("/files", getAllFiles);
+
+/**
+ * @swagger
+ * /api/delete/{filename}:
+ *   delete:
+ *     summary: Hapus file CSV
+ *     tags: [Files]
+ */
+router.delete("/delete/:filename", deleteFile);
+
+/**
+ * @swagger
+ * /api/delete-all:
+ *   delete:
+ *     summary: Hapus semua file CSV
+ *     tags: [Files]
+ */
+router.delete("/delete-all", deleteAllFiles);
+
+/**
+ * @swagger
+ * /api/history:
+ *   get:
+ *     summary: History upload CSV
+ *     tags: [Files]
+ */
+router.get("/history", getCSVHistory);
 
 export default router;
