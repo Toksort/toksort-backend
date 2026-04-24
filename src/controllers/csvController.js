@@ -8,7 +8,7 @@ import { createTable } from "../models/orderModel.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// NORMALIZER
+// ================= NORMALIZER =================
 const normalizeVariant = (variant) => {
   if (!variant) return "unknown";
 
@@ -18,6 +18,17 @@ const normalizeVariant = (variant) => {
 
   const match = text.match(/A(2[0]|1[0-9]|[2-9])/);
   return match ? `A${match[1]}` : "unknown";
+};
+
+const normalizeText = (text) => {
+  if (!text) return "";
+
+  return text
+    .toString()
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/[^a-z0-9 ]/g, "");
 };
 
 const mapShippingToDB = (val) => {
@@ -44,7 +55,7 @@ const getStatusFromTime = (createdTime) => {
   };
 };
 
-// TRANSFORM
+// ================= TRANSFORM =================
 const transformData = (rawData) => {
   return rawData.map((row) => ({
     order_id: row["order id"] ?? null,
@@ -57,7 +68,20 @@ const transformData = (rawData) => {
   }));
 };
 
-// UPLOAD CSV → DB (MULTI UPLOAD)
+// ================= KEY BUILDER =================
+const buildKey = (item) => {
+  const shipping = item.shipping_status;
+  const variation = item.variation;
+
+  if (item.order_id) {
+    return `OID-${item.order_id}-${variation}-${shipping}`;
+  }
+
+  const name = normalizeText(item.product_name);
+  return `NAME-${name}-${variation}-${shipping}`;
+};
+
+// ================= UPLOAD =================
 export const uploadCSV = async (req, res) => {
   try {
     await createTable();
@@ -67,7 +91,57 @@ export const uploadCSV = async (req, res) => {
     const rawData = await parseCSV(filePath);
     const cleanedData = transformData(rawData);
 
-    // 🔥 1. insert ke uploads
+    // ================= GET CARRY OVER =================
+    const lastUpload = await pool.query(`
+      SELECT id FROM uploads ORDER BY created_at DESC LIMIT 1
+    `);
+
+    let carryData = [];
+
+    if (lastUpload.rows.length) {
+      const last_id = lastUpload.rows[0].id;
+
+      const carry = await pool.query(`
+        SELECT * FROM orders
+        WHERE upload_id = $1
+        AND processed_quantity < quantity
+      `, [last_id]);
+
+      carryData = carry.rows.map(row => ({
+        ...row,
+        shipping_status: mapShippingToDB(row.shipping_status) || "Kirim Hari ini"
+      }));
+    }
+
+    // ================= MERGE ENGINE =================
+    const mergedMap = new Map();
+
+    const insertOrMerge = (item) => {
+      const key = buildKey(item);
+
+      if (mergedMap.has(key)) {
+        mergedMap.get(key).quantity += Number(item.quantity);
+      } else {
+        mergedMap.set(key, {
+          ...item,
+          quantity: Number(item.quantity)
+        });
+      }
+    };
+
+    // 1. carry dulu
+    for (const item of carryData) {
+      insertOrMerge(item);
+    }
+
+    // 2. data baru
+    for (const item of cleanedData) {
+      insertOrMerge(item);
+    }
+
+    const finalData = Array.from(mergedMap.values());
+
+    // ================= INSERT UPLOAD =================
     const uploadResult = await pool.query(
       `INSERT INTO uploads (filename) VALUES ($1) RETURNING id`,
       [req.file.filename]
@@ -75,31 +149,43 @@ export const uploadCSV = async (req, res) => {
 
     const upload_id = uploadResult.rows[0].id;
 
-    // 🔥 2. insert orders
-    for (const item of cleanedData) {
-      await pool.query(
-        `INSERT INTO orders 
-        (upload_id, order_id, product_name, quantity, variation, created_time, order_status, shipping_status, status)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-        [
-          upload_id,
-          item.order_id,
-          item.product_name,
-          item.quantity,
-          item.variation,
-          item.created_time,
-          item.order_status,
-          item.shipping_status,
-          item.status
-        ]
-      );
+    // ================= BATCH INSERT (FAST) =================
+    const values = [];
+    const placeholders = [];
+
+    finalData.forEach((item, i) => {
+      const idx = i * 9;
+
+    placeholders.push(
+      `($${idx + 1},$${idx + 2},$${idx + 3},$${idx + 4},$${idx + 5},$${idx + 6},$${idx + 7},$${idx + 8},'pending',$${idx + 9})`
+    );
+
+    values.push(
+      upload_id,
+      item.order_id,
+      item.product_name,
+      item.quantity,
+      item.variation,
+      item.created_time,
+      item.order_status,
+      item.shipping_status,
+      0 // 🔥 processed_quantity default
+    );
+    });
+
+    if (values.length > 0) {
+      await pool.query(`
+        INSERT INTO orders
+        (upload_id, order_id, product_name, quantity, variation, created_time, order_status, shipping_status, status, processed_quantity)
+        VALUES ${placeholders.join(",")}
+      `, values);
     }
 
     res.json({
       success: true,
       upload_id,
-      total: cleanedData.length,
-      message: "Upload sukses (multi batch ready 🚀)"
+      total: finalData.length,
+      message: "Upload + carry + dedup SUCCESS 🚀"
     });
 
   } catch (err) {
@@ -159,10 +245,10 @@ export const getUploadGrouped = async (req, res) => {
         variation,
         shipping_status,
         COUNT(*) as total_orders,
-        SUM(quantity) as total_quantity,
-        COUNT(*) FILTER (WHERE status = 'done') as completed,
+        SUM(processed_quantity) as completed_qty,
+        SUM(quantity) as total_qty,
         ROUND(
-          COUNT(*) FILTER (WHERE status = 'done') * 100.0 / COUNT(*),
+          SUM(processed_quantity) * 100.0 / NULLIF(SUM(quantity),0),
           2
         ) as progress
       FROM orders
@@ -176,10 +262,11 @@ export const getUploadGrouped = async (req, res) => {
       upload_id: id,
       total_groups: result.rows.length,
       data: result.rows.map(r => ({
-        ...r,
+        variation: r.variation,
+        shipping_status: r.shipping_status,
         total_orders: parseInt(r.total_orders),
-        total_quantity: parseInt(r.total_quantity),
-        completed: parseInt(r.completed),
+        total_quantity: parseInt(r.total_qty),
+        completed_quantity: parseInt(r.completed_qty),
         progress: parseFloat(r.progress)
       }))
     });
@@ -203,7 +290,7 @@ export const getOrders = async (req, res) => {
 
     const upload_id = latest.rows[0].id;
 
-    let query = `SELECT * FROM orders WHERE upload_id = $1 AND status != 'done'`;
+    let query = `SELECT * FROM orders WHERE upload_id = $1 AND processed_quantity < quantity`;
     const values = [upload_id];
 
     if (req.query.variation) {
@@ -255,7 +342,7 @@ export const getGroupedOrders = async (req, res) => {
         SUM(quantity) as total_quantity
       FROM orders
       WHERE upload_id = $1
-      AND status != 'done'
+      AND processed_quantity < quantity
       GROUP BY variation, shipping_status
       ORDER BY variation ASC
     `, [upload_id]);
@@ -303,11 +390,13 @@ export const completeGroup = async (req, res) => {
 
     const result = await pool.query(`
       UPDATE orders
-      SET status = 'done'
+      SET 
+        processed_quantity = quantity,
+        status = 'done'
       WHERE upload_id = $1
       AND variation = $2
       AND shipping_status = $3
-      AND status != 'done'
+      AND processed_quantity < quantity
     `, [
       upload_id,
       variation.toUpperCase(),
@@ -324,6 +413,88 @@ export const completeGroup = async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "complete failed" });
+  }
+};
+
+// COMPLETE PARTIAL
+export const completePartial = async (req, res) => {
+  try {
+    let { upload_id, variation, shipping_status, quantity } = req.body;
+
+    let remaining = parseInt(quantity);
+
+    if (!remaining || remaining <= 0) {
+      return res.status(400).json({ error: "Invalid quantity" });
+    }
+
+    // 🔥 kalau upload_id ga dikirim → pakai latest
+    if (!upload_id) {
+      const latest = await pool.query(`
+        SELECT id FROM uploads ORDER BY created_at DESC LIMIT 1
+      `);
+
+      if (!latest.rows.length) {
+        return res.status(404).json({ error: "No upload found" });
+      }
+
+      upload_id = latest.rows[0].id;
+    }
+
+    // 🔥 ambil semua row yg masih ada sisa
+    const result = await pool.query(`
+      SELECT *
+      FROM orders
+      WHERE upload_id = $1
+      AND variation = $2
+      AND shipping_status = $3
+      AND processed_quantity < quantity
+      ORDER BY id ASC
+    `, [
+      upload_id,
+      variation.toUpperCase(),
+      mapShippingToDB(shipping_status)
+    ]);
+
+    const rows = result.rows;
+
+    let processed = 0;
+
+    for (const row of rows) {
+      if (remaining <= 0) break;
+
+      const available = row.quantity - row.processed_quantity;
+
+      if (available <= 0) continue;
+
+      // 🔥 ambil sebagian / full dari row ini
+      const take = Math.min(available, remaining);
+
+      await pool.query(`
+        UPDATE orders
+        SET 
+          processed_quantity = processed_quantity + $1,
+          status = CASE 
+            WHEN processed_quantity + $1 >= quantity THEN 'done'
+            ELSE 'pending'
+          END
+        WHERE id = $2
+      `, [take, row.id]);
+
+      remaining -= take;
+      processed += take;
+    }
+
+    return res.json({
+      success: true,
+      requested: quantity,
+      processed,
+      remaining,
+      message: "Partial complete success (no split row) 🔥"
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "partial complete failed" });
   }
 };
 
@@ -365,10 +536,10 @@ export const getUploadSummary = async (req, res) => {
     const result = await pool.query(`
       SELECT 
         variation,
-        SUM(quantity)::int as total
+        SUM(quantity - processed_quantity) as remaining
       FROM orders
       WHERE upload_id = $1
-      AND status != 'done'
+      AND processed_quantity < quantity
       GROUP BY variation
       ORDER BY variation ASC
     `, [upload_id]);
@@ -399,7 +570,9 @@ export const undoCompleteGroup = async (req, res) => {
 
     const result = await pool.query(`
       UPDATE orders
-      SET status = 'pending'
+      SET 
+        status = 'pending',
+        processed_quantity = 0
       WHERE upload_id = $1
       AND variation = $2
       AND shipping_status = $3

@@ -7,6 +7,7 @@ import {
   getGroupedOrders,
   getUploadSummary,
   completeGroup,
+  completePartial,
   getHistory,
   undoCompleteGroup 
 } from "../controllers/csvController.js";
@@ -20,8 +21,6 @@ const router = express.Router();
  *     description: Order Management (PostgreSQL)
  *   - name: Uploads
  *     description: Upload & batch history
- *   - name: Files
- *     description: File system (optional)
  */
 
 /**
@@ -115,6 +114,61 @@ router.get("/summary", getUploadSummary);
 router.post("/complete-group", completeGroup);
 
 /**
+ * @swagger
+ * /api/complete-partial:
+ *   post:
+ *     summary: Complete order sebagian (partial completion)
+ *     description: Memproses sebagian quantity dari group (variation + shipping_status)
+ *     tags: [Orders]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - upload_id
+ *               - variation
+ *               - shipping_status
+ *               - quantity
+ *             properties:
+ *               upload_id:
+ *                 type: integer
+ *                 example: 1
+ *               variation:
+ *                 type: string
+ *                 example: A5
+ *               shipping_status:
+ *                 type: string
+ *                 example: besok
+ *               quantity:
+ *                 type: integer
+ *                 example: 8
+ *     responses:
+ *       200:
+ *         description: Partial complete success
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 processed:
+ *                   type: integer
+ *                   example: 8
+ *                 message:
+ *                   type: string
+ *                   example: Partial complete success 🔥
+ *       400:
+ *         description: Invalid input
+ *       500:
+ *         description: Server error
+ */
+router.post("/complete-partial", completePartial);
+
+/**
  * =========================
  * 🚀 UPLOAD
  * =========================
@@ -144,6 +198,32 @@ router.post("/upload", upload.single("file"), uploadCSV);
 
 /**
  * @swagger
+ * /api/carry-over:
+ *   post:
+ *     summary: Pindahkan sisa order kemarin ke hari ini
+ *     description: Mengubah semua pending dari "Kirim Besok" menjadi "Kirim Hari ini"
+ *     tags: [Orders]
+ *     responses:
+ *       200:
+ *         description: Carry over berhasil
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 updated:
+ *                   type: integer
+ *                   example: 10
+ *       500:
+ *         description: Server error
+ */
+router.post("/carry-over", carryOverOrders);
+
+/**
+ * @swagger
  * /api/uploads:
  *   get:
  *     summary: Get upload history (batch list)
@@ -153,12 +233,6 @@ router.post("/upload", upload.single("file"), uploadCSV);
  *         description: Success
  */
 router.get("/uploads", getHistory);
-
-/**
- * =========================
- * 📁 FILE SYSTEM (OPTIONAL)
- * =========================
- */
 
 /**
  * @swagger
