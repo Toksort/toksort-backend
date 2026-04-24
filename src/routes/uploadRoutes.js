@@ -198,32 +198,6 @@ router.post("/upload", upload.single("file"), uploadCSV);
 
 /**
  * @swagger
- * /api/carry-over:
- *   post:
- *     summary: Pindahkan sisa order kemarin ke hari ini
- *     description: Mengubah semua pending dari "Kirim Besok" menjadi "Kirim Hari ini"
- *     tags: [Orders]
- *     responses:
- *       200:
- *         description: Carry over berhasil
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 updated:
- *                   type: integer
- *                   example: 10
- *       500:
- *         description: Server error
- */
-router.post("/carry-over", carryOverOrders);
-
-/**
- * @swagger
  * /api/uploads:
  *   get:
  *     summary: Get upload history (batch list)
