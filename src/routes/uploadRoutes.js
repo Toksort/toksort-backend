@@ -8,7 +8,7 @@ import {
   getUploadSummary,
   completeGroup,
   completePartial,
-  getHistory,
+  getHistoryOrders,
   undoCompleteGroup 
 } from "../controllers/csvController.js";
 
@@ -198,15 +198,15 @@ router.post("/upload", upload.single("file"), uploadCSV);
 
 /**
  * @swagger
- * /api/uploads:
+ * /api/history:
  *   get:
  *     summary: Get upload history (batch list)
- *     tags: [Uploads]
+ *     tags: [History]
  *     responses:
  *       200:
  *         description: Success
  */
-router.get("/uploads", getHistory);
+router.get("/history", getHistoryOrders);
 
 /**
  * @swagger
@@ -217,7 +217,7 @@ router.get("/uploads", getHistory);
  *     requestBody:
  *       required: true
  *       content:
- *         application/json:
+ *         application/json:8
  *           schema:
  *             type: object
  *             required:

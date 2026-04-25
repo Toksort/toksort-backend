@@ -290,29 +290,74 @@ export const getOrders = async (req, res) => {
 
     const upload_id = latest.rows[0].id;
 
-    let query = `SELECT * FROM orders WHERE upload_id = $1 AND processed_quantity < quantity`;
+    let query = `
+      SELECT 
+        id,
+        upload_id,
+        order_id,
+        product_name,
+        variation,
+        quantity,
+        COALESCE(processed_quantity, 0) as processed_quantity,
+        shipping_status,
+        order_status,
+        created_time
+      FROM orders
+      WHERE upload_id = $1
+      AND COALESCE(processed_quantity, 0) < quantity
+    `;
+
     const values = [upload_id];
 
+    // 🔥 filter variation
     if (req.query.variation) {
       values.push(req.query.variation.toUpperCase());
       query += ` AND variation = $${values.length}`;
     }
 
+    // 🔥 filter shipping
     if (req.query.shipping_status) {
-      values.push(mapShippingToDB(req.query.shipping_status));
+      const mapped = mapShippingToDB(req.query.shipping_status);
+      values.push(mapped);
       query += ` AND shipping_status = $${values.length}`;
     }
 
     const result = await pool.query(query, values);
 
+    // 🔥 format response biar FE aman
+    const data = result.rows.map(row => {
+      const processed = Number(row.processed_quantity) || 0;
+      const total = Number(row.quantity) || 0;
+
+      return {
+        upload_id: row.upload_id,
+        product_name: row.product_name,
+        variation: row.variation,
+        quantity: total,
+        processed_quantity: processed,
+
+        // 🔥 standard shipping
+        shipping_status:
+          row.shipping_status === "Kirim Hari ini" ? "today" :
+          row.shipping_status === "Kirim Besok" ? "tomorrow" :
+          row.shipping_status,
+
+        order_status: row.order_status,
+
+        // 🔥 tambahan (biar FE ga hitung)
+        remaining_quantity: total - processed
+      };
+    });
+
     res.json({
       success: true,
       upload_id,
-      total: result.rows.length,
-      data: result.rows
+      total: data.length,
+      data
     });
 
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: "failed get orders" });
   }
 };
@@ -499,18 +544,96 @@ export const completePartial = async (req, res) => {
 };
 
 // HISTORY (ALL UPLOADS)
-export const getHistory = async (req, res) => {
+export const getHistoryOrders = async (req, res) => {
   try {
-    const result = await pool.query(`
-      SELECT * FROM uploads ORDER BY created_at DESC
+    // 🔥 ambil upload terbaru
+    const latest = await pool.query(`
+      SELECT id FROM uploads ORDER BY created_at DESC LIMIT 1
     `);
+
+    if (!latest.rows.length) {
+      return res.json({ success: true, data: [] });
+    }
+
+    const upload_id = latest.rows[0].id;
+
+    let query = `
+      SELECT 
+        upload_id,
+        product_name,
+        variation,
+        quantity,
+        COALESCE(processed_quantity, 0) as processed_quantity,
+        shipping_status,
+        order_status
+      FROM orders
+      WHERE upload_id = $1
+      AND COALESCE(processed_quantity, 0) > 0
+    `;
+
+    const values = [upload_id];
+
+    // 🔥 optional filter status
+    if (req.query.status === "done") {
+      query += ` AND processed_quantity >= quantity`;
+    }
+
+    if (req.query.status === "partial") {
+      query += ` AND processed_quantity > 0 AND processed_quantity < quantity`;
+    }
+
+    // 🔥 optional filter variation
+    if (req.query.variation) {
+      values.push(req.query.variation.toUpperCase());
+      query += ` AND variation = $${values.length}`;
+    }
+
+    // 🔥 optional filter shipping
+    if (req.query.shipping_status) {
+      const mapped = mapShippingToDB(req.query.shipping_status);
+      values.push(mapped);
+      query += ` AND shipping_status = $${values.length}`;
+    }
+
+    const result = await pool.query(query, values);
+
+    // 🔥 format ke FE
+    const data = result.rows.map(row => {
+      const processed = Number(row.processed_quantity) || 0;
+      const total = Number(row.quantity) || 0;
+
+      return {
+        upload_id: row.upload_id,
+        product_name: row.product_name,
+        variation: row.variation,
+        quantity: total,
+        processed_quantity: processed,
+
+        shipping_status:
+          row.shipping_status === "Kirim Hari ini" ? "today" :
+          row.shipping_status === "Kirim Besok" ? "tomorrow" :
+          row.shipping_status,
+
+        order_status: row.order_status,
+
+        remaining_quantity: total - processed,
+
+        // 🔥 bantu FE biar ga hitung
+        state:
+          processed >= total ? "done" :
+          processed > 0 ? "partial" : "active"
+      };
+    });
 
     res.json({
       success: true,
-      data: result.rows
+      upload_id,
+      total: data.length,
+      data
     });
 
-  } catch {
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ error: "failed get history" });
   }
 };
