@@ -91,7 +91,7 @@ export const uploadCSV = async (req, res) => {
     const rawData = await parseCSV(filePath);
     const cleanedData = transformData(rawData);
 
-    // ================= GET CARRY OVER =================
+    // ================= GET LAST UPLOAD =================
     const lastUpload = await pool.query(`
       SELECT id FROM uploads ORDER BY created_at DESC LIMIT 1
     `);
@@ -102,19 +102,49 @@ export const uploadCSV = async (req, res) => {
       const last_id = lastUpload.rows[0].id;
 
       const carry = await pool.query(`
-        SELECT * FROM orders
+        SELECT *
+        FROM orders
         WHERE upload_id = $1
         AND processed_quantity < quantity
       `, [last_id]);
 
-      carryData = carry.rows.map(row => ({
-        ...row,
-        shipping_status: mapShippingToDB(row.shipping_status) || "Kirim Hari ini"
-      }));
+      // 🔥 FIX UTAMA: pakai remaining
+      carryData = carry.rows.map(row => {
+        const remaining = row.quantity - row.processed_quantity;
+
+        return {
+          order_id: row.order_id,
+          product_name: row.product_name,
+          variation: row.variation,
+
+          quantity: remaining,              // ✅ hanya sisa
+          processed_quantity: 0,            // ✅ reset
+
+          shipping_status: "Kirim Hari ini",
+          order_status: row.order_status,
+          created_time: row.created_time,
+
+          // optional tracking
+          source_upload_id: row.upload_id,
+          is_carry_over: true
+        };
+      });
     }
 
     // ================= MERGE ENGINE =================
     const mergedMap = new Map();
+
+    const buildKey = (item) => {
+      const shipping = item.shipping_status;
+      const variation = item.variation;
+
+      if (item.order_id) {
+        return `OID-${item.order_id}-${variation}-${shipping}`;
+      }
+
+      const name = normalizeText(item.product_name);
+      return `NAME-${name}-${variation}-${shipping}`;
+    };
 
     const insertOrMerge = (item) => {
       const key = buildKey(item);
@@ -124,19 +154,27 @@ export const uploadCSV = async (req, res) => {
       } else {
         mergedMap.set(key, {
           ...item,
-          quantity: Number(item.quantity)
+          quantity: Number(item.quantity),
+          processed_quantity: item.processed_quantity || 0,
+          is_carry_over: item.is_carry_over || false,
+          source_upload_id: item.source_upload_id || null
         });
       }
     };
 
-    // 1. carry dulu
+    // 1. carry dulu (prioritas)
     for (const item of carryData) {
       insertOrMerge(item);
     }
 
     // 2. data baru
     for (const item of cleanedData) {
-      insertOrMerge(item);
+      insertOrMerge({
+        ...item,
+        processed_quantity: 0,
+        is_carry_over: false,
+        source_upload_id: null
+      });
     }
 
     const finalData = Array.from(mergedMap.values());
@@ -149,130 +187,66 @@ export const uploadCSV = async (req, res) => {
 
     const upload_id = uploadResult.rows[0].id;
 
-    // ================= BATCH INSERT (FAST) =================
+    // ================= BATCH INSERT =================
     const values = [];
     const placeholders = [];
 
     finalData.forEach((item, i) => {
-      const idx = i * 9;
+      const idx = i * 11;
 
-    placeholders.push(
-      `($${idx + 1},$${idx + 2},$${idx + 3},$${idx + 4},$${idx + 5},$${idx + 6},$${idx + 7},$${idx + 8},'pending',$${idx + 9})`
-    );
+      placeholders.push(`(
+        $${idx + 1}, $${idx + 2}, $${idx + 3}, $${idx + 4},
+        $${idx + 5}, $${idx + 6}, $${idx + 7}, $${idx + 8},
+        $${idx + 9}, $${idx + 10}, $${idx + 11}
+      )`);
 
-    values.push(
-      upload_id,
-      item.order_id,
-      item.product_name,
-      item.quantity,
-      item.variation,
-      item.created_time,
-      item.order_status,
-      item.shipping_status,
-      0 // 🔥 processed_quantity default
-    );
+      values.push(
+        upload_id,
+        item.order_id,
+        item.product_name,
+        item.quantity,
+        item.variation,
+        item.created_time,
+        item.order_status,
+        item.shipping_status,
+        item.processed_quantity,
+        item.source_upload_id,
+        item.is_carry_over
+      );
     });
 
     if (values.length > 0) {
       await pool.query(`
         INSERT INTO orders
-        (upload_id, order_id, product_name, quantity, variation, created_time, order_status, shipping_status, status, processed_quantity)
+        (
+          upload_id,
+          order_id,
+          product_name,
+          quantity,
+          variation,
+          created_time,
+          order_status,
+          shipping_status,
+          processed_quantity,
+          source_upload_id,
+          is_carry_over
+        )
         VALUES ${placeholders.join(",")}
       `, values);
     }
 
+    // ================= RESPONSE =================
     res.json({
       success: true,
       upload_id,
       total: finalData.length,
-      message: "Upload + carry + dedup SUCCESS 🚀"
+      carry_over: carryData.length,
+      message: "Upload + carry (remaining-based) SUCCESS 🚀"
     });
 
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "upload failed" });
-  }
-};
-
-export const getUploads = async (req, res) => {
-  try {
-    const result = await pool.query(`
-      SELECT id, filename, created_at
-      FROM uploads
-      ORDER BY created_at DESC
-    `);
-
-    res.json({
-      success: true,
-      total: result.rows.length,
-      data: result.rows
-    });
-
-  } catch (err) {
-    res.status(500).json({ error: "failed get uploads" });
-  }
-};
-
-export const getUploadDetail = async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const result = await pool.query(`
-      SELECT *
-      FROM orders
-      WHERE upload_id = $1
-      ORDER BY id ASC
-    `, [id]);
-
-    res.json({
-      success: true,
-      upload_id: id,
-      total: result.rows.length,
-      data: result.rows
-    });
-
-  } catch (err) {
-    res.status(500).json({ error: "failed get upload detail" });
-  }
-};
-
-export const getUploadGrouped = async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const result = await pool.query(`
-      SELECT 
-        variation,
-        shipping_status,
-        COUNT(*) as total_orders,
-        SUM(processed_quantity) as completed_qty,
-        SUM(quantity) as total_qty,
-        ROUND(
-          SUM(processed_quantity) * 100.0 / NULLIF(SUM(quantity),0),
-          2
-        ) as progress
-      FROM orders
-      WHERE upload_id = $1
-      GROUP BY variation, shipping_status
-      ORDER BY variation ASC
-    `, [id]);
-
-    res.json({
-      success: true,
-      upload_id: id,
-      total_groups: result.rows.length,
-      data: result.rows.map(r => ({
-        variation: r.variation,
-        shipping_status: r.shipping_status,
-        total_orders: parseInt(r.total_orders),
-        total_quantity: parseInt(r.total_qty),
-        completed_quantity: parseInt(r.completed_qty),
-        progress: parseFloat(r.progress)
-      }))
-    });
-
-  } catch (err) {
-    res.status(500).json({ error: "failed grouped data" });
   }
 };
 
@@ -362,11 +336,11 @@ export const getOrders = async (req, res) => {
   }
 };
 
-export const getGroupedOrders = async (req, res) => {
+export const getGroupedOrdersCarryAware = async (req, res) => {
   try {
     let upload_id = req.query.upload_id;
 
-    // 🔥 kalau ga dikirim → ambil latest
+    // 🔥 fallback ke latest upload
     if (!upload_id) {
       const latest = await pool.query(`
         SELECT id FROM uploads ORDER BY created_at DESC LIMIT 1
@@ -383,25 +357,72 @@ export const getGroupedOrders = async (req, res) => {
       SELECT 
         variation,
         shipping_status,
-        COUNT(*) as total_orders,
-        SUM(quantity) as total_quantity
+
+        COUNT(*) AS total_orders,
+
+        SUM(quantity) AS total_quantity,
+        SUM(processed_quantity) AS total_processed,
+
+        SUM(quantity - processed_quantity) AS total_remaining,
+
+        -- 🔥 progress berbasis quantity (bukan count)
+        ROUND(
+          SUM(processed_quantity) * 100.0 / NULLIF(SUM(quantity), 0),
+          2
+        ) AS progress,
+
+        -- 🔥 breakdown status (quantity-based)
+        SUM(
+          CASE WHEN processed_quantity = 0 THEN quantity ELSE 0 END
+        ) AS qty_not_started,
+
+        SUM(
+          CASE 
+            WHEN processed_quantity > 0 AND processed_quantity < quantity 
+            THEN quantity 
+            ELSE 0 
+          END
+        ) AS qty_partial,
+
+        SUM(
+          CASE WHEN processed_quantity >= quantity THEN quantity ELSE 0 END
+        ) AS qty_done
+
       FROM orders
       WHERE upload_id = $1
-      AND processed_quantity < quantity
       GROUP BY variation, shipping_status
       ORDER BY variation ASC
     `, [upload_id]);
 
+    const data = result.rows.map(row => ({
+      variation: row.variation,
+      shipping_status: row.shipping_status,
+
+      total_orders: Number(row.total_orders),
+
+      total_quantity: Number(row.total_quantity),
+      total_processed: Number(row.total_processed),
+      total_remaining: Number(row.total_remaining),
+
+      progress: Number(row.progress),
+
+      breakdown: {
+        not_started: Number(row.qty_not_started),
+        partial: Number(row.qty_partial),
+        done: Number(row.qty_done)
+      }
+    }));
+
     res.json({
       success: true,
       upload_id,
-      total_groups: result.rows.length,
-      data: result.rows
+      total_groups: data.length,
+      data
     });
 
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "failed grouping orders" });
+    res.status(500).json({ error: "failed grouped carry-aware" });
   }
 };
 
@@ -637,7 +658,6 @@ export const getHistoryOrders = async (req, res) => {
     res.status(500).json({ error: "failed get history" });
   }
 };
-
 
 // SUMMARY (LATEST UPLOAD)
 export const getUploadSummary = async (req, res) => {

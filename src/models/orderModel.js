@@ -1,7 +1,6 @@
 import { pool } from "../config/db.js";
 
 export const createTable = async () => {
-  // 🔥 TABLE uploads
   await pool.query(`
     CREATE TABLE IF NOT EXISTS uploads (
       id SERIAL PRIMARY KEY,
@@ -10,25 +9,45 @@ export const createTable = async () => {
     );
   `);
 
-  // 🔥 TABLE orders
   await pool.query(`
     CREATE TABLE IF NOT EXISTS orders (
       id SERIAL PRIMARY KEY,
       upload_id INTEGER,
       order_id TEXT,
       product_name TEXT,
+
       quantity INTEGER NOT NULL DEFAULT 0,
+      processed_quantity INTEGER NOT NULL DEFAULT 0,
+
       variation TEXT,
       created_time TEXT,
       order_status TEXT,
       shipping_status TEXT,
+
       status TEXT,
-      original_quantity INT,
-      processed_quantity INT NOT NULL DEFAULT 0
+
+      -- 🔥 carry system
+      source_upload_id INTEGER,
+      is_carry_over BOOLEAN DEFAULT FALSE
     );
   `);
 
-  // 🔥 constraints (safe)
+  await pool.query(`
+    ALTER TABLE orders
+    ADD COLUMN IF NOT EXISTS source_upload_id INTEGER;
+  `);
+
+  await pool.query(`
+    ALTER TABLE orders
+    ADD COLUMN IF NOT EXISTS is_carry_over BOOLEAN DEFAULT FALSE;
+  `);
+
+  await pool.query(`
+    ALTER TABLE orders
+    ALTER COLUMN processed_quantity SET DEFAULT 0;
+  `);
+
+
   await pool.query(`
   DO $$
   BEGIN
@@ -69,7 +88,6 @@ export const createTable = async () => {
   $$;
   `);
 
-  // 🔥 index (safe)
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_orders_upload 
     ON orders(upload_id);
@@ -78,5 +96,10 @@ export const createTable = async () => {
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_orders_lookup 
     ON orders(upload_id, variation, shipping_status);
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_orders_progress
+    ON orders(upload_id, processed_quantity);
   `);
 };

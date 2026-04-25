@@ -4,12 +4,12 @@ import upload from "../utils/multerConfig.js";
 import {
   uploadCSV,
   getOrders,
-  getGroupedOrders,
+  getGroupedOrdersCarryAware,
   getUploadSummary,
   completeGroup,
   completePartial,
   getHistoryOrders,
-  undoCompleteGroup 
+  undoCompleteGroup,
 } from "../controllers/csvController.js";
 
 const router = express.Router();
@@ -56,19 +56,76 @@ router.get("/orders", getOrders);
  * @swagger
  * /api/grouped-orders:
  *   get:
- *     summary: Get grouped orders (variation + shipping)
+ *     summary: Get grouped orders (carry-aware + progress + breakdown)
+ *     description:
+ *       Mengambil data grouping order berdasarkan variation & shipping_status.
+ *       Sudah termasuk carry-over, progress, dan breakdown status (not_started, partial, done).
  *     tags: [Orders]
  *     parameters:
  *       - in: query
  *         name: upload_id
  *         schema:
  *           type: integer
+ *         required: false
+ *         description: ID upload (jika tidak dikirim akan menggunakan upload terbaru)
  *         example: 1
  *     responses:
  *       200:
- *         description: Success
+ *         description: Success get grouped carry-aware orders
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 upload_id:
+ *                   type: integer
+ *                   example: 1
+ *                 total_groups:
+ *                   type: integer
+ *                   example: 3
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       variation:
+ *                         type: string
+ *                         example: A5
+ *                       shipping_status:
+ *                         type: string
+ *                         example: Kirim Hari ini
+ *                       total_orders:
+ *                         type: integer
+ *                         example: 10
+ *                       total_quantity:
+ *                         type: integer
+ *                         example: 250
+ *                       total_processed:
+ *                         type: integer
+ *                         example: 200
+ *                       total_remaining:
+ *                         type: integer
+ *                         example: 50
+ *                       progress:
+ *                         type: number
+ *                         example: 80.0
+ *                       breakdown:
+ *                         type: object
+ *                         properties:
+ *                           not_started:
+ *                             type: integer
+ *                             example: 50
+ *                           partial:
+ *                             type: integer
+ *                             example: 100
+ *                           done:
+ *                             type: integer
+ *                             example: 100
  */
-router.get("/grouped-orders", getGroupedOrders);
+router.get("/grouped-orders", getGroupedOrdersCarryAware);
 
 /**
  * @swagger
@@ -201,7 +258,7 @@ router.post("/upload", upload.single("file"), uploadCSV);
  * /api/history:
  *   get:
  *     summary: Get upload history (batch list)
- *     tags: [History]
+ *     tags: [Uploads]
  *     responses:
  *       200:
  *         description: Success
