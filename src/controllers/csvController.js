@@ -313,8 +313,8 @@ export const getOrders = async (req, res) => {
         // 🔥 standard shipping
         shipping_status:
           row.shipping_status === "Kirim Hari ini" ? "today" :
-          row.shipping_status === "Kirim Besok" ? "tomorrow" :
-          row.shipping_status,
+            row.shipping_status === "Kirim Besok" ? "tomorrow" :
+              row.shipping_status,
 
         order_status: row.order_status,
 
@@ -438,7 +438,6 @@ export const completeGroup = async (req, res) => {
       });
     }
 
-    // 🔥 kalau upload_id ga dikirim → pakai latest
     if (!upload_id) {
       const latest = await pool.query(`
         SELECT id FROM uploads ORDER BY created_at DESC LIMIT 1
@@ -471,9 +470,7 @@ export const completeGroup = async (req, res) => {
 
     return res.json({
       success: true,
-      upload_id,
-      updated: result.rowCount,
-      message: `${variation} - ${shipping_status} completed 🔥`
+      updated: result.rowCount
     });
 
   } catch (err) {
@@ -493,7 +490,6 @@ export const completePartial = async (req, res) => {
       return res.status(400).json({ error: "Invalid quantity" });
     }
 
-    // 🔥 kalau upload_id ga dikirim → pakai latest
     if (!upload_id) {
       const latest = await pool.query(`
         SELECT id FROM uploads ORDER BY created_at DESC LIMIT 1
@@ -506,7 +502,6 @@ export const completePartial = async (req, res) => {
       upload_id = latest.rows[0].id;
     }
 
-    // 🔥 ambil semua row yg masih ada sisa
     const result = await pool.query(`
       SELECT *
       FROM orders
@@ -529,10 +524,8 @@ export const completePartial = async (req, res) => {
       if (remaining <= 0) break;
 
       const available = row.quantity - row.processed_quantity;
-
       if (available <= 0) continue;
 
-      // 🔥 ambil sebagian / full dari row ini
       const take = Math.min(available, remaining);
 
       await pool.query(`
@@ -541,6 +534,7 @@ export const completePartial = async (req, res) => {
           processed_quantity = processed_quantity + $1,
           status = CASE 
             WHEN processed_quantity + $1 >= quantity THEN 'done'
+            WHEN processed_quantity + $1 > 0 THEN 'partial'
             ELSE 'pending'
           END
         WHERE id = $2
@@ -554,8 +548,7 @@ export const completePartial = async (req, res) => {
       success: true,
       requested: quantity,
       processed,
-      remaining,
-      message: "Partial complete success (no split row) 🔥"
+      remaining
     });
 
   } catch (err) {
@@ -567,34 +560,21 @@ export const completePartial = async (req, res) => {
 // HISTORY (ALL UPLOADS)
 export const getHistoryOrders = async (req, res) => {
   try {
-    // 🔥 ambil upload terbaru
-    const latest = await pool.query(`
-      SELECT id FROM uploads ORDER BY created_at DESC LIMIT 1
-    `);
-
-    if (!latest.rows.length) {
-      return res.json({ success: true, data: [] });
-    }
-
-    const upload_id = latest.rows[0].id;
-
     let query = `
       SELECT 
-        upload_id,
-        product_name,
         variation,
-        quantity,
-        COALESCE(processed_quantity, 0) as processed_quantity,
         shipping_status,
-        order_status
+
+        SUM(quantity) as total_quantity,
+        SUM(processed_quantity) as total_processed,
+        SUM(quantity - processed_quantity) as total_remaining
+
       FROM orders
-      WHERE upload_id = $1
-      AND COALESCE(processed_quantity, 0) > 0
+      WHERE processed_quantity > 0
     `;
 
-    const values = [upload_id];
+    const values = [];
 
-    // 🔥 optional filter status
     if (req.query.status === "done") {
       query += ` AND processed_quantity >= quantity`;
     }
@@ -603,52 +583,46 @@ export const getHistoryOrders = async (req, res) => {
       query += ` AND processed_quantity > 0 AND processed_quantity < quantity`;
     }
 
-    // 🔥 optional filter variation
     if (req.query.variation) {
       values.push(req.query.variation.toUpperCase());
       query += ` AND variation = $${values.length}`;
     }
 
-    // 🔥 optional filter shipping
     if (req.query.shipping_status) {
-      const mapped = mapShippingToDB(req.query.shipping_status);
-      values.push(mapped);
+      values.push(mapShippingToDB(req.query.shipping_status));
       query += ` AND shipping_status = $${values.length}`;
     }
 
+    query += `
+      GROUP BY variation, shipping_status
+      ORDER BY total_processed DESC
+    `;
+
     const result = await pool.query(query, values);
 
-    // 🔥 format ke FE
-    const data = result.rows.map(row => {
-      const processed = Number(row.processed_quantity) || 0;
-      const total = Number(row.quantity) || 0;
+    const data = result.rows.map(row => ({
+      variation: row.variation,
 
-      return {
-        upload_id: row.upload_id,
-        product_name: row.product_name,
-        variation: row.variation,
-        quantity: total,
-        processed_quantity: processed,
+      shipping_status:
+        row.shipping_status === "Kirim Hari ini" ? "today" :
+        row.shipping_status === "Kirim Besok" ? "tomorrow" :
+        row.shipping_status,
 
-        shipping_status:
-          row.shipping_status === "Kirim Hari ini" ? "today" :
-          row.shipping_status === "Kirim Besok" ? "tomorrow" :
-          row.shipping_status,
+      total_quantity: Number(row.total_quantity),
+      total_processed: Number(row.total_processed),
+      total_remaining: Number(row.total_remaining),
 
-        order_status: row.order_status,
+      progress:
+        row.total_quantity == 0
+          ? 0
+          : Number(row.total_processed) / Number(row.total_quantity),
 
-        remaining_quantity: total - processed,
-
-        // 🔥 bantu FE biar ga hitung
-        state:
-          processed >= total ? "done" :
-          processed > 0 ? "partial" : "active"
-      };
-    });
+      state:
+        row.total_processed >= row.total_quantity ? "done" : "partial"
+    }));
 
     res.json({
       success: true,
-      upload_id,
       total: data.length,
       data
     });
