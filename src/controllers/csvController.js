@@ -58,12 +58,12 @@ const getStatusFromTime = (createdTime) => {
 // ================= TRANSFORM =================
 const transformData = (rawData) => {
   return rawData.map((row) => ({
-    order_id: row["order id"] ?? null,
-    product_name: row["product name"] ?? null,
-    quantity: parseInt(row["quantity"]) || 0,
-    variation: normalizeVariant(row["variation"]),
-    created_time: row["created time"] ?? null,
-    ...getStatusFromTime(row["created time"]),
+    order_id: row.order_id ?? null,
+    product_name: row.product_name ?? null,
+    quantity: parseInt(row.quantity) || 0,
+    variation: normalizeVariant(row.variation),
+    created_time: row.created_time ?? null,
+    ...getStatusFromTime(row.created_time),
     status: "pending"
   }));
 };
