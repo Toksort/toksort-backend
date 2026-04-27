@@ -275,7 +275,7 @@ router.get("/history", getHistoryOrders);
  *     requestBody:
  *       required: true
  *       content:
- *         application/json:8
+ *         application/json:
  *           schema:
  *             type: object
  *             required:
