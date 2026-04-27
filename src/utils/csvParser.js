@@ -1,11 +1,13 @@
-import fs from "fs";
+import { Readable } from "stream";
 import csv from "csv-parser";
 
-export default function parseCSV(filePath) {
+export function parseCSV(buffer) {
   return new Promise((resolve, reject) => {
     const results = [];
 
-    fs.createReadStream(filePath)
+    const stream = Readable.from(buffer.toString("utf-8"));
+
+    stream
       .pipe(csv())
       .on("data", (row) => {
         const cleanRow = {};
@@ -18,13 +20,14 @@ export default function parseCSV(filePath) {
             typeof value === "string" ? value.trim() : value ?? null;
         });
 
-        if (!Object.values(cleanRow).some(v => v)) return;
+        // skip row kosong
+        if (!Object.values(cleanRow).some((v) => v)) return;
 
         results.push(cleanRow);
       })
       .on("end", () => resolve(results))
       .on("error", (err) =>
-        reject(new Error("CSV parse error: " + err.message))
+        reject(new Error("CSV parse error (buffer): " + err.message))
       );
   });
 }

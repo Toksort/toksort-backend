@@ -86,9 +86,27 @@ export const uploadCSV = async (req, res) => {
   try {
     await createTable();
 
-    const filePath = path.join(__dirname, "../uploads", req.file.filename);
+    // ================= VALIDATION =================
+    if (!req.file) {
+      return res.status(400).json({ error: "File wajib diisi" });
+    }
 
-    const rawData = await parseCSV(filePath);
+    let rawData;
+    let filename;
+
+    // ================= HANDLE FILE SOURCE =================
+    if (req.file.buffer) {
+      // 🔥 dari Flutter
+      rawData = await parseCSVFromBuffer(req.file.buffer);
+      filename = req.file.originalname || `upload_${Date.now()}.csv`;
+    } else if (req.file.path) {
+      // 🔥 dari Swagger / disk
+      rawData = await parseCSV(req.file.path);
+      filename = req.file.filename;
+    } else {
+      throw new Error("File tidak valid");
+    }
+
     const cleanedData = transformData(rawData);
 
     // ================= GET LAST UPLOAD =================
@@ -108,7 +126,6 @@ export const uploadCSV = async (req, res) => {
         AND processed_quantity < quantity
       `, [last_id]);
 
-      // 🔥 FIX UTAMA: pakai remaining
       carryData = carry.rows.map(row => {
         const remaining = row.quantity - row.processed_quantity;
 
@@ -116,15 +133,11 @@ export const uploadCSV = async (req, res) => {
           order_id: row.order_id,
           product_name: row.product_name,
           variation: row.variation,
-
-          quantity: remaining,              // ✅ hanya sisa
-          processed_quantity: 0,            // ✅ reset
-
+          quantity: remaining,
+          processed_quantity: 0,
           shipping_status: "Kirim Hari ini",
           order_status: row.order_status,
           created_time: row.created_time,
-
-          // optional tracking
           source_upload_id: row.upload_id,
           is_carry_over: true
         };
@@ -162,60 +175,58 @@ export const uploadCSV = async (req, res) => {
       }
     };
 
-    // 1. carry dulu (prioritas)
-    for (const item of carryData) {
-      insertOrMerge(item);
-    }
+    // carry dulu
+    carryData.forEach(insertOrMerge);
 
-    // 2. data baru
-    for (const item of cleanedData) {
+    // data baru
+    cleanedData.forEach(item =>
       insertOrMerge({
         ...item,
         processed_quantity: 0,
         is_carry_over: false,
         source_upload_id: null
-      });
-    }
+      })
+    );
 
     const finalData = Array.from(mergedMap.values());
 
     // ================= INSERT UPLOAD =================
     const uploadResult = await pool.query(
       `INSERT INTO uploads (filename) VALUES ($1) RETURNING id`,
-      [req.file.filename]
+      [filename] // 🔥 FIX disini
     );
 
     const upload_id = uploadResult.rows[0].id;
 
     // ================= BATCH INSERT =================
-    const values = [];
-    const placeholders = [];
+    if (finalData.length > 0) {
+      const values = [];
+      const placeholders = [];
 
-    finalData.forEach((item, i) => {
-      const idx = i * 11;
+      finalData.forEach((item, i) => {
+        const idx = i * 11;
 
-      placeholders.push(`(
-        $${idx + 1}, $${idx + 2}, $${idx + 3}, $${idx + 4},
-        $${idx + 5}, $${idx + 6}, $${idx + 7}, $${idx + 8},
-        $${idx + 9}, $${idx + 10}, $${idx + 11}
-      )`);
+        placeholders.push(`(
+          $${idx + 1}, $${idx + 2}, $${idx + 3}, $${idx + 4},
+          $${idx + 5}, $${idx + 6}, $${idx + 7}, $${idx + 8},
+          $${idx + 9}, $${idx + 10}, $${idx + 11}
+        )`);
 
-      values.push(
-        upload_id,
-        item.order_id,
-        item.product_name,
-        item.quantity,
-        item.variation,
-        item.created_time,
-        item.order_status,
-        item.shipping_status,
-        item.processed_quantity,
-        item.source_upload_id,
-        item.is_carry_over
-      );
-    });
+        values.push(
+          upload_id,
+          item.order_id,
+          item.product_name,
+          item.quantity,
+          item.variation,
+          item.created_time,
+          item.order_status,
+          item.shipping_status,
+          item.processed_quantity,
+          item.source_upload_id,
+          item.is_carry_over
+        );
+      });
 
-    if (values.length > 0) {
       await pool.query(`
         INSERT INTO orders
         (
@@ -241,12 +252,12 @@ export const uploadCSV = async (req, res) => {
       upload_id,
       total: finalData.length,
       carry_over: carryData.length,
-      message: "Upload + carry (remaining-based) SUCCESS 🚀"
+      message: "Upload + carry SUCCESS 🚀"
     });
 
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "upload failed" });
+    console.error("UPLOAD ERROR:", err);
+    res.status(500).json({ error: err.message });
   }
 };
 
@@ -605,8 +616,8 @@ export const getHistoryOrders = async (req, res) => {
 
       shipping_status:
         row.shipping_status === "Kirim Hari ini" ? "today" :
-        row.shipping_status === "Kirim Besok" ? "tomorrow" :
-        row.shipping_status,
+          row.shipping_status === "Kirim Besok" ? "tomorrow" :
+            row.shipping_status,
 
       total_quantity: Number(row.total_quantity),
       total_processed: Number(row.total_processed),
