@@ -235,8 +235,9 @@ router.post("/complete-partial", completePartial);
  * @swagger
  * /api/upload:
  *   post:
- *     summary: Upload CSV → insert ke database (multi batch)
- *     tags: [Uploads]
+ *     summary: Upload CSV → insert ke database
+ *     tags:
+ *       - Uploads
  *     requestBody:
  *       required: true
  *       content:
