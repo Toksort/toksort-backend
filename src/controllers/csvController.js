@@ -57,15 +57,46 @@ const getStatusFromTime = (createdTime) => {
 
 // ================= TRANSFORM =================
 const transformData = (rawData) => {
-  return rawData.map((row) => ({
-    order_id: row.order_id ?? null,
-    product_name: row.product_name ?? null,
-    quantity: parseInt(row.quantity) || 0,
-    variation: normalizeVariant(row.variation),
-    created_time: row.created_time ?? null,
-    ...getStatusFromTime(row.created_time),
-    status: "pending"
-  }));
+  return rawData
+    .map((row) => {
+      const order_id =
+        row.order_id ||
+        row["order id"] ||
+        row["order_id"];
+
+      const product_name =
+        row.product_name ||
+        row["product name"];
+
+      const quantity =
+        parseInt(
+          row.quantity ||
+          row["quantity"] ||
+          row["sku quantity"]
+        ) || 0;
+
+      const created_time =
+        row.created_time ||
+        row["created time"] ||
+        row["created at"];
+
+      return {
+        order_id,
+        product_name,
+        quantity,
+        variation: normalizeVariant(row.variation),
+        created_time,
+        ...getStatusFromTime(created_time),
+        status: "pending"
+      };
+    })
+    .filter(item => {
+      if (!item.product_name || item.quantity <= 0) {
+        console.log("❌ DROPPED ROW:", item);
+        return false;
+      }
+      return true;
+    });
 };
 
 // ================= KEY BUILDER =================
