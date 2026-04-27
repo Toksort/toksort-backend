@@ -5,7 +5,7 @@ export function parseCSV(buffer) {
   return new Promise((resolve, reject) => {
     const results = [];
 
-    const stream = Readable.from(buffer.toString("utf-8"));
+    const stream = Readable.from([buffer.toString("utf-8")]); // ✅ FIX
 
     stream
       .pipe(csv())
@@ -13,21 +13,31 @@ export function parseCSV(buffer) {
         const cleanRow = {};
 
         Object.keys(row).forEach((key) => {
-          const cleanKey = key.trim().toLowerCase();
+          const cleanKey = key
+            .replace(/^\uFEFF/, "") // ✅ remove BOM
+            .trim()
+            .toLowerCase();
+
           const value = row[key];
 
           cleanRow[cleanKey] =
             typeof value === "string" ? value.trim() : value ?? null;
         });
 
-        // skip row kosong
-        if (!Object.values(cleanRow).some((v) => v)) return;
+        // debug skip
+        if (!Object.values(cleanRow).some((v) => v)) {
+          console.log("⚠️ EMPTY ROW SKIPPED:", cleanRow);
+          return;
+        }
 
         results.push(cleanRow);
       })
-      .on("end", () => resolve(results))
-      .on("error", (err) =>
-        reject(new Error("CSV parse error (buffer): " + err.message))
-      );
+      .on("end", () => {
+        console.log("✅ PARSED ROWS:", results.length);
+        resolve(results);
+      })
+      .on("error", (err) => {
+        reject(new Error("CSV parse error (buffer): " + err.message));
+      });
   });
 }

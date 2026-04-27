@@ -13,7 +13,6 @@ const normalizeVariant = (variant) => {
   if (!variant) return "unknown";
 
   const text = variant.toString().trim().toUpperCase();
-
   if (text === "DEFAULT") return "A5";
 
   const match = text.match(/A(2[0]|1[0-9]|[2-9])/);
@@ -22,18 +21,11 @@ const normalizeVariant = (variant) => {
 
 const normalizeText = (text) => {
   if (!text) return "";
-
-  return text
-    .toString()
-    .toLowerCase()
-    .trim()
-    .replace(/\s+/g, " ")
-    .replace(/[^a-z0-9 ]/g, "");
+  return text.toString().toLowerCase().trim().replace(/\s+/g, " ");
 };
 
 const mapShippingToDB = (val) => {
   if (!val) return "";
-
   val = val.toLowerCase();
 
   if (val.includes("hari ini") || val === "today") return "Kirim Hari ini";
@@ -55,51 +47,77 @@ const getStatusFromTime = (createdTime) => {
   };
 };
 
-// ================= TRANSFORM =================
-const transformData = (rawData) => {
-  return rawData
-    .map((row) => {
-      const order_id =
-        row.order_id ||
-        row["order id"] ||
-        row["order_id"];
+// ================= HARDENING HELPERS =================
 
-      const product_name =
-        row.product_name ||
-        row["product name"];
-
-      const quantity =
-        parseInt(
-          row.quantity ||
-          row["quantity"] ||
-          row["sku quantity"]
-        ) || 0;
-
-      const created_time =
-        row.created_time ||
-        row["created time"] ||
-        row["created at"];
-
-      return {
-        order_id,
-        product_name,
-        quantity,
-        variation: normalizeVariant(row.variation),
-        created_time,
-        ...getStatusFromTime(created_time),
-        status: "pending"
-      };
-    })
-    .filter(item => {
-      if (!item.product_name || item.quantity <= 0) {
-        console.log("❌ DROPPED ROW:", item);
-        return false;
-      }
-      return true;
-    });
+// 🔥 unify buffer
+const getFileBuffer = (file) => {
+  if (file.buffer) return file.buffer;
+  if (file.path) return fs.readFileSync(file.path);
+  throw new Error("File tidak valid");
 };
 
-// ================= KEY BUILDER =================
+// 🔥 header fleksibel
+const HEADER_MAP = {
+  order_id: ["order id", "order_id", "id pesanan"],
+  product_name: ["product name", "product_name", "produk", "nama produk"],
+  quantity: ["quantity", "qty", "jumlah", "sku quantity"],
+  variation: ["variation", "variasi", "size"],
+  created_time: ["created time", "created_at", "tanggal"]
+};
+
+const pickField = (row, keys) => {
+  for (const key of keys) {
+    if (row[key]) return row[key];
+  }
+  return null;
+};
+
+// 🔥 safe quantity
+const parseQty = (val) => {
+  if (!val) return 0;
+  return parseInt(val.toString().replace(/[^0-9]/g, "")) || 0;
+};
+
+// ================= TRANSFORM =================
+const transformData = (rawData) => {
+  const result = [];
+
+  rawData.forEach((row, index) => {
+    const order_id = pickField(row, HEADER_MAP.order_id);
+    const product_name = pickField(row, HEADER_MAP.product_name);
+    const quantityRaw = pickField(row, HEADER_MAP.quantity);
+    const created_time = pickField(row, HEADER_MAP.created_time);
+
+    const quantity = parseQty(quantityRaw);
+
+    const item = {
+      order_id,
+      product_name,
+      quantity,
+      variation: normalizeVariant(pickField(row, HEADER_MAP.variation)),
+      created_time,
+      ...getStatusFromTime(created_time),
+      status: "pending"
+    };
+
+    // 🔥 validation
+    if (!item.product_name) {
+      console.log(`❌ DROP row ${index}: no product_name`);
+      return;
+    }
+
+    if (item.quantity <= 0) {
+      console.log(`❌ DROP row ${index}: invalid quantity`);
+      return;
+    }
+
+    result.push(item);
+  });
+
+  return result;
+};
+
+// ================= KEY =================
 const buildKey = (item) => {
   const shipping = item.shipping_status;
   const variation = item.variation;
@@ -114,35 +132,40 @@ const buildKey = (item) => {
 
 // ================= UPLOAD =================
 export const uploadCSV = async (req, res) => {
+  let rawData = [];
+  let cleanedData = [];
+  let finalData = [];
+
   try {
     await createTable();
 
-    // ================= VALIDATION =================
     if (!req.file) {
       return res.status(400).json({ error: "File wajib diisi" });
     }
 
-    let rawData;
-    let filename;
+    const buffer = getFileBuffer(req.file);
+    rawData = await parseCSV(buffer);
 
-
-
-    // ================= HANDLE FILE SOURCE =================
-    if (req.file.buffer) {
-      // 🔥 dari Flutter
-      rawData = await parseCSV(req.file.buffer);
-      filename = req.file.originalname || `upload_${Date.now()}.csv`;
-    } else if (req.file.path) {
-      // 🔥 dari Swagger / disk
-      rawData = await parseCSV(req.file.path);
-      filename = req.file.filename;
-    } else {
-      throw new Error("File tidak valid");
+    if (!rawData.length) {
+      return res.status(400).json({
+        success: false,
+        message: "CSV kosong / tidak terbaca"
+      });
     }
 
-    const cleanedData = transformData(rawData);
+    cleanedData = transformData(rawData);
 
-    // ================= GET LAST UPLOAD =================
+    if (!cleanedData.length) {
+      return res.status(400).json({
+        success: false,
+        message: "Semua data tidak valid"
+      });
+    }
+
+    console.log("📊 RAW:", rawData.length);
+    console.log("🧹 CLEAN:", cleanedData.length);
+
+    // ================= CARRY =================
     const lastUpload = await pool.query(`
       SELECT id FROM uploads ORDER BY created_at DESC LIMIT 1
     `);
@@ -153,65 +176,39 @@ export const uploadCSV = async (req, res) => {
       const last_id = lastUpload.rows[0].id;
 
       const carry = await pool.query(`
-        SELECT *
-        FROM orders
+        SELECT * FROM orders
         WHERE upload_id = $1
         AND processed_quantity < quantity
       `, [last_id]);
 
-      carryData = carry.rows.map(row => {
-        const remaining = row.quantity - row.processed_quantity;
-
-        return {
-          order_id: row.order_id,
-          product_name: row.product_name,
-          variation: row.variation,
-          quantity: remaining,
-          processed_quantity: 0,
-          shipping_status: "Kirim Hari ini",
-          order_status: row.order_status,
-          created_time: row.created_time,
-          source_upload_id: row.upload_id,
-          is_carry_over: true
-        };
-      });
+      carryData = carry.rows.map(row => ({
+        order_id: row.order_id,
+        product_name: row.product_name,
+        variation: row.variation,
+        quantity: row.quantity - row.processed_quantity,
+        processed_quantity: 0,
+        shipping_status: "Kirim Hari ini",
+        order_status: row.order_status,
+        created_time: row.created_time,
+        source_upload_id: row.upload_id,
+        is_carry_over: true
+      }));
     }
 
-    // ================= MERGE ENGINE =================
+    // ================= MERGE =================
     const mergedMap = new Map();
-
-    const buildKey = (item) => {
-      const shipping = item.shipping_status;
-      const variation = item.variation;
-
-      if (item.order_id) {
-        return `OID-${item.order_id}-${variation}-${shipping}`;
-      }
-
-      const name = normalizeText(item.product_name);
-      return `NAME-${name}-${variation}-${shipping}`;
-    };
 
     const insertOrMerge = (item) => {
       const key = buildKey(item);
 
       if (mergedMap.has(key)) {
-        mergedMap.get(key).quantity += Number(item.quantity);
+        mergedMap.get(key).quantity += item.quantity;
       } else {
-        mergedMap.set(key, {
-          ...item,
-          quantity: Number(item.quantity),
-          processed_quantity: item.processed_quantity || 0,
-          is_carry_over: item.is_carry_over || false,
-          source_upload_id: item.source_upload_id || null
-        });
+        mergedMap.set(key, item);
       }
     };
 
-    // carry dulu
     carryData.forEach(insertOrMerge);
-
-    // data baru
     cleanedData.forEach(item =>
       insertOrMerge({
         ...item,
@@ -221,79 +218,90 @@ export const uploadCSV = async (req, res) => {
       })
     );
 
-    const finalData = Array.from(mergedMap.values());
+    finalData = Array.from(mergedMap.values());
 
-    // ================= INSERT UPLOAD =================
+    if (!finalData.length) {
+      return res.status(400).json({
+        success: false,
+        message: "Tidak ada data untuk disimpan"
+      });
+    }
+
+    // ================= INSERT =================
     const uploadResult = await pool.query(
       `INSERT INTO uploads (filename) VALUES ($1) RETURNING id`,
-      [filename] // 🔥 FIX disini
+      [req.file.originalname || "upload.csv"]
     );
 
     const upload_id = uploadResult.rows[0].id;
 
-    // ================= BATCH INSERT =================
-    if (finalData.length > 0) {
-      const values = [];
-      const placeholders = [];
+    const values = [];
+    const placeholders = [];
 
-      finalData.forEach((item, i) => {
-        const idx = i * 11;
+    finalData.forEach((item, i) => {
+      const idx = i * 11;
 
-        placeholders.push(`(
-          $${idx + 1}, $${idx + 2}, $${idx + 3}, $${idx + 4},
-          $${idx + 5}, $${idx + 6}, $${idx + 7}, $${idx + 8},
-          $${idx + 9}, $${idx + 10}, $${idx + 11}
-        )`);
+      placeholders.push(`(
+        $${idx + 1}, $${idx + 2}, $${idx + 3}, $${idx + 4},
+        $${idx + 5}, $${idx + 6}, $${idx + 7}, $${idx + 8},
+        $${idx + 9}, $${idx + 10}, $${idx + 11}
+      )`);
 
-        values.push(
-          upload_id,
-          item.order_id,
-          item.product_name,
-          item.quantity,
-          item.variation,
-          item.created_time,
-          item.order_status,
-          item.shipping_status,
-          item.processed_quantity,
-          item.source_upload_id,
-          item.is_carry_over
-        );
-      });
+      values.push(
+        upload_id,
+        item.order_id,
+        item.product_name,
+        item.quantity,
+        item.variation,
+        item.created_time,
+        item.order_status,
+        item.shipping_status,
+        item.processed_quantity,
+        item.source_upload_id,
+        item.is_carry_over
+      );
+    });
 
-      await pool.query(`
-        INSERT INTO orders
-        (
-          upload_id,
-          order_id,
-          product_name,
-          quantity,
-          variation,
-          created_time,
-          order_status,
-          shipping_status,
-          processed_quantity,
-          source_upload_id,
-          is_carry_over
-        )
-        VALUES ${placeholders.join(",")}
-      `, values);
-    }
+    await pool.query(`
+      INSERT INTO orders
+      (
+        upload_id,
+        order_id,
+        product_name,
+        quantity,
+        variation,
+        created_time,
+        order_status,
+        shipping_status,
+        processed_quantity,
+        source_upload_id,
+        is_carry_over
+      )
+      VALUES ${placeholders.join(",")}
+    `, values);
 
-    // ================= RESPONSE =================
     res.json({
       success: true,
       upload_id,
       total: finalData.length,
       carry_over: carryData.length,
-      message: "Upload + carry SUCCESS 🚀"
+      debug: {
+        raw: rawData.length,
+        cleaned: cleanedData.length
+      }
     });
 
   } catch (err) {
     console.error("UPLOAD ERROR:", err);
-    console.log("RAW SAMPLE:", rawData[0]);
-    console.log("CLEANED SAMPLE:", cleanedData[0]);
-    console.log("FINAL DATA:", finalData.length);
-    res.status(500).json({ error: err.message });
+
+    res.status(500).json({
+      error: err.message,
+      debug: {
+        raw: rawData?.length,
+        cleaned: cleanedData?.length,
+        final: finalData?.length
+      }
+    });
   }
 };
 
