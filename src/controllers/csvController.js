@@ -94,9 +94,7 @@ export const uploadCSV = async (req, res) => {
     let rawData;
     let filename;
 
-    console.log("RAW SAMPLE:", rawData[0]);
-    console.log("CLEANED SAMPLE:", cleanedData[0]);
-    console.log("FINAL DATA:", finalData.length);
+
 
     // ================= HANDLE FILE SOURCE =================
     if (req.file.buffer) {
@@ -261,6 +259,9 @@ export const uploadCSV = async (req, res) => {
 
   } catch (err) {
     console.error("UPLOAD ERROR:", err);
+    console.log("RAW SAMPLE:", rawData[0]);
+    console.log("CLEANED SAMPLE:", cleanedData[0]);
+    console.log("FINAL DATA:", finalData.length);
     res.status(500).json({ error: err.message });
   }
 };
