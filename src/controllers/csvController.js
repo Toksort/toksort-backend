@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import parseCSV from "../utils/csvParser.js";
+import { parseCSV } from "../utils/csvParser.js";
 import { fileURLToPath } from "url";
 import { pool } from "../config/db.js";
 import { createTable } from "../models/orderModel.js";
@@ -97,7 +97,7 @@ export const uploadCSV = async (req, res) => {
     // ================= HANDLE FILE SOURCE =================
     if (req.file.buffer) {
       // 🔥 dari Flutter
-      rawData = await parseCSVFromBuffer(req.file.buffer);
+      rawData = await parseCSV(req.file.buffer);
       filename = req.file.originalname || `upload_${Date.now()}.csv`;
     } else if (req.file.path) {
       // 🔥 dari Swagger / disk
