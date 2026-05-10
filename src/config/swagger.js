@@ -1,6 +1,6 @@
 const BASE_URL =
   process.env.BASE_URL ||
-  "https://toksort-backend-production.up.railway.app";
+  "https://toksort-backend-backend.up.railway.app";
   
 const options = {
   definition: {
