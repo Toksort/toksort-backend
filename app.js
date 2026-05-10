@@ -4,15 +4,17 @@ import cors from "cors";
 import swaggerUi from "swagger-ui-express";
 import swaggerJSDoc from "swagger-jsdoc";
 import uploadRoutes from "./src/routes/uploadRoutes.js";
-import { pool } from "./src/config/db.js";
 import { createTable } from "./src/models/orderModel.js";
 
 const app = express();
 
 const PORT = process.env.PORT || 3000;
+const BASE_URL =
+  process.env.BASE_URL || "https://toksort-backend-production.up.railway.app";
 
 app.use(cors({ origin: "*" }));
-app.use(express.json());
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true }));
 app.use(morgan("dev"));
 
 const swaggerOptions = {
@@ -21,10 +23,12 @@ const swaggerOptions = {
     info: {
       title: "TokSort API",
       version: "1.0.0",
+      description:
+        "Backend API untuk upload CSV, normalisasi order, grouping, carry-over, dan progress tracking TokSort.",
     },
     servers: [
       {
-        url: "https://toksort-backend-production.up.railway.app",
+        url: BASE_URL,
       },
     ],
   },
@@ -33,28 +37,56 @@ const swaggerOptions = {
 
 const swaggerSpec = swaggerJSDoc(swaggerOptions);
 
+app.get("/", (req, res) => {
+  res.json({
+    success: true,
+    message: "TokSort Backend API is running",
+    docs: "/api-docs",
+  });
+});
+
+app.get("/health", (req, res) => {
+  res.json({
+    success: true,
+    status: "healthy",
+  });
+});
+
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
-// routes
 app.use("/api", uploadRoutes);
+
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    message: "Route tidak ditemukan",
+  });
+});
+
+app.use((err, req, res, next) => {
+  console.error("SERVER ERROR:", err.message);
+
+  res.status(err.status || 500).json({
+    success: false,
+    message: err.message || "Internal server error",
+  });
+});
 
 const start = async () => {
   try {
-    console.log("🚀 Starting app...");
+    console.log("Starting TokSort backend...");
 
-    await createTable(); // 🔥 sekarang TANPA param
+    await createTable();
 
-    console.log("🔥 DB ready");
+    console.log("Database ready");
 
     app.listen(PORT, () => {
-      console.log(`🚀 Server running on port ${PORT}`);
+      console.log(`Server running on port ${PORT}`);
     });
-
   } catch (err) {
-    console.error("❌ START ERROR:", err);
+    console.error("START ERROR:", err);
+    process.exit(1);
   }
 };
-
-console.log("DATABASE_URL:", process.env.DATABASE_URL);
 
 start();
