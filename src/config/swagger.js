@@ -1,9 +1,7 @@
 const BASE_URL =
   process.env.BASE_URL ||
-  (process.env.NODE_ENV === "production"
-    ? "https://toksort-backend-production.up.railway.app"
-    : "http://localhost:3000");
-
+  "https://toksort-backend-production.up.railway.app";
+  
 const options = {
   definition: {
     openapi: "3.0.0",
