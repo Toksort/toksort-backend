@@ -6,6 +6,7 @@ import {
   getOrders,
   getGroupedOrdersCarryAware,
   getOrdersBySize,
+  getSpecialOrders,
   getUploadSummary,
   completeGroup,
   completePartial,
@@ -229,6 +230,8 @@ router.get("/grouped-orders", getGroupedOrdersCarryAware);
  *         description: Server error
  */
 router.get("/orders-by-size", getOrdersBySize);
+
+router.get("/orders-special", getSpecialOrders);
 
 /**
  * @swagger
