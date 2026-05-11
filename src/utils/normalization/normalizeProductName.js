@@ -1,10 +1,7 @@
 import { extractASeries } from "./extractASeries.js";
 import { extractDimension } from "./extractDimension.js";
 
-export const normalizeProductName = (
-  productName,
-  variationMeta = {}
-) => {
+export const normalizeProductName = (productName, variationMeta = {}) => {
   if (!productName) return "unknown_product";
 
   const sizeSeries =

@@ -155,10 +155,8 @@ export const uploadCSV = async (req, res) => {
       });
     }
 
-    console.log("📊 RAW:", rawData.length);
-    console.log("🧹 CLEAN:", cleanedData.length);
-
-    // ================= CARRY OVER =================
+    console.log("RAW:", rawData.length);
+    console.log("CLEAN:", cleanedData.length);
 
     const lastUpload = await pool.query(`
       SELECT id FROM uploads ORDER BY created_at DESC LIMIT 1
@@ -174,15 +172,23 @@ export const uploadCSV = async (req, res) => {
         SELECT * FROM orders
         WHERE upload_id = $1
         AND processed_quantity < quantity
-      `,
+        `,
         [last_id]
       );
 
       carryData = carry.rows.map((row) => {
         const rawCarryItem = {
           order_id: row.order_id,
-          product_name: row.product_name,
-          variation: row.variation,
+          product_name:
+            row.raw_product_name ||
+            row.normalized_product_name ||
+            row.product_name,
+
+          variation:
+            row.raw_variation ||
+            row.normalized_variation ||
+            row.variation,
+
           quantity: row.quantity - row.processed_quantity,
           processed_quantity: 0,
           shipping_status: "Kirim Hari ini",
@@ -190,13 +196,12 @@ export const uploadCSV = async (req, res) => {
           created_time: row.created_time,
           source_upload_id: row.upload_id,
           is_carry_over: true,
+          status: "pending",
         };
 
         return normalizeOrder(rawCarryItem);
       });
     }
-
-    // ================= MERGE =================
 
     const mergedMap = new Map();
 
@@ -218,6 +223,7 @@ export const uploadCSV = async (req, res) => {
         processed_quantity: 0,
         is_carry_over: false,
         source_upload_id: null,
+        status: item.status || "pending",
       })
     );
 
@@ -230,8 +236,6 @@ export const uploadCSV = async (req, res) => {
       });
     }
 
-    // ================= INSERT =================
-
     const uploadResult = await pool.query(
       `INSERT INTO uploads (filename) VALUES ($1) RETURNING id`,
       [req.file.originalname || "upload.csv"]
@@ -243,26 +247,41 @@ export const uploadCSV = async (req, res) => {
     const placeholders = [];
 
     finalData.forEach((item, i) => {
-      const idx = i * 11;
+      const idx = i * 20;
 
       placeholders.push(`(
-        $${idx + 1}, $${idx + 2}, $${idx + 3}, $${idx + 4},
-        $${idx + 5}, $${idx + 6}, $${idx + 7}, $${idx + 8},
-        $${idx + 9}, $${idx + 10}, $${idx + 11}
+        $${idx + 1}, $${idx + 2}, $${idx + 3}, $${idx + 4}, $${idx + 5},
+        $${idx + 6}, $${idx + 7}, $${idx + 8}, $${idx + 9}, $${idx + 10},
+        $${idx + 11}, $${idx + 12}, $${idx + 13}, $${idx + 14}, $${idx + 15},
+        $${idx + 16}, $${idx + 17}, $${idx + 18}, $${idx + 19}, $${idx + 20}
       )`);
 
       values.push(
         upload_id,
         item.order_id,
+
+        item.raw_product_name || item.product_name,
         item.product_name,
-        item.quantity,
+        item.normalized_product_name || item.product_name,
+
+        item.raw_variation || item.variation,
         item.variation,
+        item.normalized_variation || item.variation,
+        item.variation_type || "UNKNOWN",
+        item.size_series || null,
+        item.dimension || null,
+        item.special_category || null,
+
+        item.quantity,
+        item.processed_quantity || 0,
+
         item.created_time,
         item.order_status,
         item.shipping_status,
-        item.processed_quantity,
-        item.source_upload_id,
-        item.is_carry_over
+        item.status || "pending",
+
+        item.source_upload_id || null,
+        item.is_carry_over || false
       );
     });
 
@@ -272,18 +291,32 @@ export const uploadCSV = async (req, res) => {
       (
         upload_id,
         order_id,
+
+        raw_product_name,
         product_name,
-        quantity,
+        normalized_product_name,
+
+        raw_variation,
         variation,
+        normalized_variation,
+        variation_type,
+        size_series,
+        dimension,
+        special_category,
+
+        quantity,
+        processed_quantity,
+
         created_time,
         order_status,
         shipping_status,
-        processed_quantity,
+        status,
+
         source_upload_id,
         is_carry_over
       )
       VALUES ${placeholders.join(",")}
-    `,
+      `,
       values
     );
 
@@ -295,12 +328,14 @@ export const uploadCSV = async (req, res) => {
       debug: {
         raw: rawData.length,
         cleaned: cleanedData.length,
+        final: finalData.length,
       },
     });
   } catch (err) {
     console.error("UPLOAD ERROR:", err);
 
     return res.status(500).json({
+      success: false,
       error: err.message,
       debug: {
         raw: rawData?.length,
