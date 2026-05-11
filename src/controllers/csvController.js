@@ -492,25 +492,31 @@ export const getOrdersBySize = async (req, res) => {
 
     const result = await pool.query(
       `
-      SELECT
-        COALESCE(size_series, variation, 'UNKNOWN') AS size_series,
-        COALESCE(dimension, 'UNKNOWN') AS dimension,
-        shipping_status,
+        SELECT
+          COALESCE(size_series, variation, 'UNKNOWN') AS size_series,
+          COALESCE(dimension, 'UNKNOWN') AS dimension,
+          shipping_status,
 
-        COUNT(*) AS total_orders,
-        SUM(quantity) AS total_quantity,
-        SUM(processed_quantity) AS total_processed,
-        SUM(quantity - processed_quantity) AS total_remaining,
+          COUNT(*) AS total_orders,
+          SUM(quantity) AS total_quantity,
+          SUM(processed_quantity) AS total_processed,
+          SUM(quantity - processed_quantity) AS total_remaining,
 
-        ROUND(
-          SUM(processed_quantity) * 100.0 / NULLIF(SUM(quantity), 0),
-          2
-        ) AS progress
+          ROUND(
+            SUM(processed_quantity) * 100.0 / NULLIF(SUM(quantity), 0),
+            2
+          ) AS progress
 
-      FROM orders
-      WHERE upload_id = $1
-      GROUP BY size_series, dimension, shipping_status
-      ORDER BY size_series ASC, dimension ASC, shipping_status ASC
+        FROM orders
+        WHERE upload_id = $1
+        GROUP BY
+          COALESCE(size_series, variation, 'UNKNOWN'),
+          COALESCE(dimension, 'UNKNOWN'),
+          shipping_status
+        ORDER BY
+          COALESCE(size_series, variation, 'UNKNOWN') ASC,
+          COALESCE(dimension, 'UNKNOWN') ASC,
+          shipping_status ASC
       `,
       [upload_id]
     );
