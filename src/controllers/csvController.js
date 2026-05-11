@@ -469,6 +469,108 @@ export const getGroupedOrdersCarryAware = async (req, res) => {
   }
 };
 
+// ================= GROUPED ORDERS BY SIZE =================
+
+export const getOrdersBySize = async (req, res) => {
+  try {
+    let upload_id = req.query.upload_id;
+
+    if (!upload_id) {
+      const latest = await pool.query(`
+        SELECT id FROM uploads ORDER BY created_at DESC LIMIT 1
+      `);
+
+      if (!latest.rows.length) {
+        return res.json({
+          success: true,
+          data: [],
+        });
+      }
+
+      upload_id = latest.rows[0].id;
+    }
+
+    const result = await pool.query(
+      `
+      SELECT
+        COALESCE(size_series, variation, 'UNKNOWN') AS size_series,
+        COALESCE(dimension, 'UNKNOWN') AS dimension,
+        shipping_status,
+
+        COUNT(*) AS total_orders,
+        SUM(quantity) AS total_quantity,
+        SUM(processed_quantity) AS total_processed,
+        SUM(quantity - processed_quantity) AS total_remaining,
+
+        ROUND(
+          SUM(processed_quantity) * 100.0 / NULLIF(SUM(quantity), 0),
+          2
+        ) AS progress
+
+      FROM orders
+      WHERE upload_id = $1
+      GROUP BY size_series, dimension, shipping_status
+      ORDER BY size_series ASC, dimension ASC, shipping_status ASC
+      `,
+      [upload_id]
+    );
+
+    const grouped = {};
+
+    result.rows.forEach((row) => {
+      const sizeSeries = row.size_series;
+      const dimension = row.dimension;
+
+      if (!grouped[sizeSeries]) {
+        grouped[sizeSeries] = {
+          size_series: sizeSeries,
+          dimensions: [],
+        };
+      }
+
+      let dimensionGroup = grouped[sizeSeries].dimensions.find(
+        (item) => item.dimension === dimension
+      );
+
+      if (!dimensionGroup) {
+        dimensionGroup = {
+          dimension,
+          shipping: [],
+        };
+
+        grouped[sizeSeries].dimensions.push(dimensionGroup);
+      }
+
+      dimensionGroup.shipping.push({
+        shipping_status:
+          row.shipping_status === "Kirim Hari ini"
+            ? "today"
+            : row.shipping_status === "Kirim Besok"
+              ? "tomorrow"
+              : row.shipping_status,
+
+        total_orders: Number(row.total_orders),
+        total_quantity: Number(row.total_quantity),
+        total_processed: Number(row.total_processed),
+        total_remaining: Number(row.total_remaining),
+        progress: Number(row.progress),
+      });
+    });
+
+    return res.json({
+      success: true,
+      upload_id,
+      data: Object.values(grouped),
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({
+      success: false,
+      message: "failed get orders by size",
+    });
+  }
+};
+
 // ================= COMPLETE GROUP =================
 
 export const completeGroup = async (req, res) => {

@@ -5,6 +5,7 @@ import {
   uploadCSV,
   getOrders,
   getGroupedOrdersCarryAware,
+  getOrdersBySize,
   getUploadSummary,
   completeGroup,
   completePartial,
@@ -155,6 +156,79 @@ router.post("/upload", upload.single("file"), uploadCSV);
  *         description: Server error
  */
 router.get("/grouped-orders", getGroupedOrdersCarryAware);
+
+/**
+ * @swagger
+ * /api/orders-by-size:
+ *   get:
+ *     summary: Group order berdasarkan A-series, ukuran, dan status kirim
+ *     description: Mengambil data order yang dikelompokkan berdasarkan size_series seperti A2-A20, dimension seperti 100x50x25, lalu shipping_status. Cocok untuk tampilan frontend yang memisahkan A5 berdasarkan ukuran dan kirim hari ini/besok.
+ *     tags: [Analytics]
+ *     parameters:
+ *       - in: query
+ *         name: upload_id
+ *         required: false
+ *         schema:
+ *           type: integer
+ *         description: Jika kosong, sistem memakai upload terbaru.
+ *         example: 12
+ *     responses:
+ *       200:
+ *         description: Data grouped by size berhasil diambil
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 upload_id:
+ *                   type: integer
+ *                   example: 12
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       size_series:
+ *                         type: string
+ *                         example: A5
+ *                       dimensions:
+ *                         type: array
+ *                         items:
+ *                           type: object
+ *                           properties:
+ *                             dimension:
+ *                               type: string
+ *                               example: 100x50x25
+ *                             shipping:
+ *                               type: array
+ *                               items:
+ *                                 type: object
+ *                                 properties:
+ *                                   shipping_status:
+ *                                     type: string
+ *                                     example: today
+ *                                   total_orders:
+ *                                     type: integer
+ *                                     example: 4
+ *                                   total_quantity:
+ *                                     type: integer
+ *                                     example: 25
+ *                                   total_processed:
+ *                                     type: integer
+ *                                     example: 10
+ *                                   total_remaining:
+ *                                     type: integer
+ *                                     example: 15
+ *                                   progress:
+ *                                     type: number
+ *                                     example: 40
+ *       500:
+ *         description: Server error
+ */
+router.get("/orders-by-size", getOrdersBySize);
 
 /**
  * @swagger
