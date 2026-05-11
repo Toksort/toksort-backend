@@ -527,31 +527,32 @@ export const getOrdersBySize = async (req, res) => {
 
     const result = await pool.query(
       `
-        SELECT
-          COALESCE(size_series, variation, 'UNKNOWN') AS size_series,
-          COALESCE(dimension, 'UNKNOWN') AS dimension,
-          shipping_status,
+      SELECT
+        size_series,
+        dimension,
+        shipping_status,
 
-          COUNT(*) AS total_orders,
-          SUM(quantity) AS total_quantity,
-          SUM(processed_quantity) AS total_processed,
-          SUM(quantity - processed_quantity) AS total_remaining,
+        COUNT(*) AS total_orders,
+        SUM(quantity) AS total_quantity,
+        SUM(processed_quantity) AS total_processed,
+        SUM(quantity - processed_quantity) AS total_remaining,
 
-          ROUND(
-            SUM(processed_quantity) * 100.0 / NULLIF(SUM(quantity), 0),
-            2
-          ) AS progress
+        ROUND(
+          SUM(processed_quantity) * 100.0 / NULLIF(SUM(quantity), 0),
+          2
+        ) AS progress
 
-        FROM orders
-        WHERE upload_id = $1
-        GROUP BY
-          COALESCE(size_series, variation, 'UNKNOWN'),
-          COALESCE(dimension, 'UNKNOWN'),
-          shipping_status
-        ORDER BY
-          COALESCE(size_series, variation, 'UNKNOWN') ASC,
-          COALESCE(dimension, 'UNKNOWN') ASC,
-          shipping_status ASC
+      FROM orders
+      WHERE upload_id = $1
+      AND variation_type = 'A_SERIES'
+      AND size_series IS NOT NULL
+      AND dimension IS NOT NULL
+      AND size_series ~ '^A([2-9]|1[0-9]|20)$'
+      GROUP BY size_series, dimension, shipping_status
+      ORDER BY
+        CAST(SUBSTRING(size_series FROM 2) AS INTEGER) ASC,
+        dimension ASC,
+        shipping_status ASC
       `,
       [upload_id]
     );
@@ -594,20 +595,23 @@ export const getOrdersBySize = async (req, res) => {
         total_quantity: Number(row.total_quantity),
         total_processed: Number(row.total_processed),
         total_remaining: Number(row.total_remaining),
-        progress: Number(row.progress),
+        progress: Number(row.progress) || 0,
       });
     });
 
     return res.json({
       success: true,
-      upload_id,
+      upload_id: Number(upload_id),
+      total_series: Object.keys(grouped).length,
       data: Object.values(grouped),
     });
   } catch (err) {
-    console.error(err);
+    console.error("GET ORDERS BY SIZE ERROR:", err);
+
     return res.status(500).json({
       success: false,
       message: "failed get orders by size",
+      error: err.message,
     });
   }
 };
