@@ -3,6 +3,22 @@ import { normalizeProductName } from "./normalizeProductName.js";
 import { extractASeries } from "./extractASeries.js";
 import { extractDimension } from "./extractDimension.js";
 
+const detectProductCategory = (productName) => {
+  if (!productName) return null;
+
+  const text = productName.toString().toLowerCase();
+
+  if (
+    text.includes("terpal karung kurir") ||
+    text.includes("karung kurir") ||
+    (text.includes("karung") && text.includes("anti air"))
+  ) {
+    return "TERPAL_KARUNG_KURIR";
+  }
+
+  return null;
+};
+
 export const normalizeOrder = (item) => {
   const variationMeta = classifyVariation(item.variation);
 
@@ -19,11 +35,23 @@ export const normalizeOrder = (item) => {
     productDimension ||
     null;
 
+  const productCategory = detectProductCategory(item.product_name);
+
+  const specialCategory =
+    productCategory ||
+    variationMeta.special_category ||
+    null;
+
   const normalizedProductName = normalizeProductName(item.product_name, {
     ...variationMeta,
     size_series: sizeSeries,
     dimension,
   });
+
+  const variationType =
+    productCategory === "TERPAL_KARUNG_KURIR"
+      ? "SPECIAL"
+      : variationMeta.variation_type;
 
   return {
     ...item,
@@ -34,12 +62,12 @@ export const normalizeOrder = (item) => {
     raw_variation: variationMeta.raw_variation,
     normalized_variation: variationMeta.normalized_variation,
 
-    variation_type: variationMeta.variation_type,
+    variation_type: variationType,
 
     size_series: sizeSeries,
     dimension,
 
-    special_category: variationMeta.special_category,
+    special_category: specialCategory,
 
     // backward compatibility
     product_name: normalizedProductName,
