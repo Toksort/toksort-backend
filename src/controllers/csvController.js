@@ -544,6 +544,7 @@ export const getOrdersBySize = async (req, res) => {
 
       FROM orders
       WHERE upload_id = $1
+      AND special_category = 'TERPAL_KOLAM'
       AND variation_type = 'A_SERIES'
       AND size_series IS NOT NULL
       AND dimension IS NOT NULL
@@ -640,7 +641,7 @@ export const getSpecialOrders = async (req, res) => {
     const result = await pool.query(
       `
       SELECT
-        'PEMBUANGAN_KOLAM_TERPAL' AS special_category,
+        special_category,
 
         COALESCE(
           normalized_variation,
@@ -663,11 +664,9 @@ export const getSpecialOrders = async (req, res) => {
 
       FROM orders
       WHERE upload_id = $1
-      AND special_category IN (
-        'PEMBUANGAN_KOLAM_TERPAL',
-        'PEMBUANGAN_AIR'
-      )
+      AND special_category = 'PEMBUANGAN_KOLAM_TERPAL'
       GROUP BY
+        special_category,
         COALESCE(
           normalized_variation,
           raw_variation,
@@ -746,7 +745,7 @@ export const getSpecialOrders = async (req, res) => {
   }
 };
 
-// ================= GROUPED COURIERTARP ORDERS =================
+// ================= GROUPED COURIER TARP ORDERS =================
 
 export const getCourierTarpOrders = async (req, res) => {
   try {
@@ -758,7 +757,10 @@ export const getCourierTarpOrders = async (req, res) => {
       `);
 
       if (!latest.rows.length) {
-        return res.json({ success: true, data: [] });
+        return res.json({
+          success: true,
+          data: [],
+        });
       }
 
       upload_id = latest.rows[0].id;
@@ -770,17 +772,20 @@ export const getCourierTarpOrders = async (req, res) => {
         size_series,
         dimension,
         shipping_status,
+
         COUNT(*) AS total_orders,
         SUM(quantity) AS total_quantity,
         SUM(processed_quantity) AS total_processed,
         SUM(quantity - processed_quantity) AS total_remaining,
+
         ROUND(
           SUM(processed_quantity) * 100.0 / NULLIF(SUM(quantity), 0),
           2
         ) AS progress
+
       FROM orders
       WHERE upload_id = $1
-      AND special_category = 'TERPAL_KARUNG_KURIR'
+      AND special_category = 'KARUNG_KURIR'
       AND size_series IS NOT NULL
       AND dimension IS NOT NULL
       GROUP BY size_series, dimension, shipping_status
@@ -795,23 +800,27 @@ export const getCourierTarpOrders = async (req, res) => {
     const grouped = {};
 
     result.rows.forEach((row) => {
-      if (!grouped[row.size_series]) {
-        grouped[row.size_series] = {
-          size_series: row.size_series,
+      const sizeSeries = row.size_series;
+      const dimension = row.dimension;
+
+      if (!grouped[sizeSeries]) {
+        grouped[sizeSeries] = {
+          size_series: sizeSeries,
           dimensions: [],
         };
       }
 
-      let dimensionGroup = grouped[row.size_series].dimensions.find(
-        (item) => item.dimension === row.dimension
+      let dimensionGroup = grouped[sizeSeries].dimensions.find(
+        (item) => item.dimension === dimension
       );
 
       if (!dimensionGroup) {
         dimensionGroup = {
-          dimension: row.dimension,
+          dimension,
           shipping: [],
         };
-        grouped[row.size_series].dimensions.push(dimensionGroup);
+
+        grouped[sizeSeries].dimensions.push(dimensionGroup);
       }
 
       dimensionGroup.shipping.push({
@@ -821,6 +830,7 @@ export const getCourierTarpOrders = async (req, res) => {
             : row.shipping_status === "Kirim Besok"
               ? "tomorrow"
               : row.shipping_status,
+
         total_orders: Number(row.total_orders),
         total_quantity: Number(row.total_quantity),
         total_processed: Number(row.total_processed),
