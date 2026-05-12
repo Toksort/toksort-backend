@@ -6,7 +6,7 @@ import {
   getOrders,
   getGroupedOrdersCarryAware,
   getOrdersBySize,
-  getSpecialOrders,
+  getCourierTarpOrders,
   getUploadSummary,
   completeGroup,
   completePartial,
@@ -231,7 +231,7 @@ router.get("/grouped-orders", getGroupedOrdersCarryAware);
  */
 router.get("/orders-by-size", getOrdersBySize);
 
-router.get("/orders-special", getSpecialOrders);
+router.get("/orders-special", getCourierTarpOrders);
 
 /**
  * @swagger

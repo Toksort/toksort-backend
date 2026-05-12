@@ -618,7 +618,7 @@ export const getOrdersBySize = async (req, res) => {
 
 // ================= GROUPED SPECIAL ORDERS =================
 
-export const getSpecialOrders = async (req, res) => {
+export const getCourierTarpOrders = async (req, res) => {
   try {
     let upload_id = req.query.upload_id;
 
@@ -628,10 +628,7 @@ export const getSpecialOrders = async (req, res) => {
       `);
 
       if (!latest.rows.length) {
-        return res.json({
-          success: true,
-          data: [],
-        });
+        return res.json({ success: true, data: [] });
       }
 
       upload_id = latest.rows[0].id;
@@ -640,26 +637,27 @@ export const getSpecialOrders = async (req, res) => {
     const result = await pool.query(
       `
       SELECT
-        special_category,
-        normalized_variation,
+        size_series,
+        dimension,
         shipping_status,
-
         COUNT(*) AS total_orders,
         SUM(quantity) AS total_quantity,
         SUM(processed_quantity) AS total_processed,
         SUM(quantity - processed_quantity) AS total_remaining,
-
         ROUND(
           SUM(processed_quantity) * 100.0 / NULLIF(SUM(quantity), 0),
           2
         ) AS progress
-
       FROM orders
       WHERE upload_id = $1
-      AND variation_type = 'SPECIAL'
-      AND special_category IS NOT NULL
-      GROUP BY special_category, normalized_variation, shipping_status
-      ORDER BY special_category ASC, normalized_variation ASC, shipping_status ASC
+      AND special_category = 'TERPAL_KARUNG_KURIR'
+      AND size_series IS NOT NULL
+      AND dimension IS NOT NULL
+      GROUP BY size_series, dimension, shipping_status
+      ORDER BY
+        CAST(SUBSTRING(size_series FROM 2) AS INTEGER) ASC,
+        dimension ASC,
+        shipping_status ASC
       `,
       [upload_id]
     );
@@ -667,37 +665,32 @@ export const getSpecialOrders = async (req, res) => {
     const grouped = {};
 
     result.rows.forEach((row) => {
-      const category = row.special_category;
-      const variation = row.normalized_variation;
-
-      if (!grouped[category]) {
-        grouped[category] = {
-          special_category: category,
-          items: [],
+      if (!grouped[row.size_series]) {
+        grouped[row.size_series] = {
+          size_series: row.size_series,
+          dimensions: [],
         };
       }
 
-      let itemGroup = grouped[category].items.find(
-        (item) => item.variation === variation
+      let dimensionGroup = grouped[row.size_series].dimensions.find(
+        (item) => item.dimension === row.dimension
       );
 
-      if (!itemGroup) {
-        itemGroup = {
-          variation,
+      if (!dimensionGroup) {
+        dimensionGroup = {
+          dimension: row.dimension,
           shipping: [],
         };
-
-        grouped[category].items.push(itemGroup);
+        grouped[row.size_series].dimensions.push(dimensionGroup);
       }
 
-      itemGroup.shipping.push({
+      dimensionGroup.shipping.push({
         shipping_status:
           row.shipping_status === "Kirim Hari ini"
             ? "today"
             : row.shipping_status === "Kirim Besok"
               ? "tomorrow"
               : row.shipping_status,
-
         total_orders: Number(row.total_orders),
         total_quantity: Number(row.total_quantity),
         total_processed: Number(row.total_processed),
@@ -709,15 +702,15 @@ export const getSpecialOrders = async (req, res) => {
     return res.json({
       success: true,
       upload_id: Number(upload_id),
-      total_categories: Object.keys(grouped).length,
+      total_series: Object.keys(grouped).length,
       data: Object.values(grouped),
     });
   } catch (err) {
-    console.error("GET SPECIAL ORDERS ERROR:", err);
+    console.error("GET COURIER TARP ORDERS ERROR:", err);
 
     return res.status(500).json({
       success: false,
-      message: "failed get special orders",
+      message: "failed get courier tarp orders",
       error: err.message,
     });
   }
