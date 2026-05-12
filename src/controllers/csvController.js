@@ -618,6 +618,117 @@ export const getOrdersBySize = async (req, res) => {
 
 // ================= GROUPED SPECIAL ORDERS =================
 
+export const getSpecialOrders = async (req, res) => {
+  try {
+    let upload_id = req.query.upload_id;
+
+    if (!upload_id) {
+      const latest = await pool.query(`
+        SELECT id FROM uploads ORDER BY created_at DESC LIMIT 1
+      `);
+
+      if (!latest.rows.length) {
+        return res.json({
+          success: true,
+          data: [],
+        });
+      }
+
+      upload_id = latest.rows[0].id;
+    }
+
+    const result = await pool.query(
+      `
+      SELECT
+        special_category,
+        normalized_variation,
+        shipping_status,
+
+        COUNT(*) AS total_orders,
+        SUM(quantity) AS total_quantity,
+        SUM(processed_quantity) AS total_processed,
+        SUM(quantity - processed_quantity) AS total_remaining,
+
+        ROUND(
+          SUM(processed_quantity) * 100.0 / NULLIF(SUM(quantity), 0),
+          2
+        ) AS progress
+
+      FROM orders
+      WHERE upload_id = $1
+      AND special_category = 'PEMBUANGAN_KOLAM_TERPAL'
+      GROUP BY
+        special_category,
+        normalized_variation,
+        shipping_status
+      ORDER BY
+        normalized_variation ASC,
+        shipping_status ASC
+      `,
+      [upload_id]
+    );
+
+    const grouped = {};
+
+    result.rows.forEach((row) => {
+      const category = row.special_category;
+      const variation = row.normalized_variation;
+
+      if (!grouped[category]) {
+        grouped[category] = {
+          special_category: category,
+          items: [],
+        };
+      }
+
+      let itemGroup = grouped[category].items.find(
+        (item) => item.variation === variation
+      );
+
+      if (!itemGroup) {
+        itemGroup = {
+          variation,
+          shipping: [],
+        };
+
+        grouped[category].items.push(itemGroup);
+      }
+
+      itemGroup.shipping.push({
+        shipping_status:
+          row.shipping_status === "Kirim Hari ini"
+            ? "today"
+            : row.shipping_status === "Kirim Besok"
+              ? "tomorrow"
+              : row.shipping_status,
+
+        total_orders: Number(row.total_orders),
+        total_quantity: Number(row.total_quantity),
+        total_processed: Number(row.total_processed),
+        total_remaining: Number(row.total_remaining),
+        progress: Number(row.progress) || 0,
+      });
+    });
+
+    return res.json({
+      success: true,
+      upload_id: Number(upload_id),
+      total_categories: Object.keys(grouped).length,
+      data: Object.values(grouped),
+    });
+  } catch (err) {
+    console.error("GET SPECIAL ORDERS ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "failed get special orders",
+      error: err.message,
+    });
+  }
+};
+
+// ================= GROUPED COURIERTARP ORDERS =================
+
 export const getCourierTarpOrders = async (req, res) => {
   try {
     let upload_id = req.query.upload_id;

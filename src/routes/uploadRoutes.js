@@ -6,6 +6,7 @@ import {
   getOrders,
   getGroupedOrdersCarryAware,
   getOrdersBySize,
+  getSpecialOrders,
   getCourierTarpOrders,
   getUploadSummary,
   completeGroup,
@@ -230,6 +231,82 @@ router.get("/grouped-orders", getGroupedOrdersCarryAware);
  *         description: Server error
  */
 router.get("/orders-by-size", getOrdersBySize);
+
+/**
+ * @swagger
+ * /api/orders-special:
+ *   get:
+ *     summary: Group order Pembuangan Kolam Terpal
+ *     description: Mengambil data produk pembuangan/penguras air kolam terpal berdasarkan variasi ukuran seperti 1/2 25 cm, 1/2 50 cm, 3/4 25 cm, dan 3/4 50 cm beserta status pengiriman.
+ *     tags: [Analytics]
+ *     parameters:
+ *       - in: query
+ *         name: upload_id
+ *         required: false
+ *         schema:
+ *           type: integer
+ *         description: Jika kosong, sistem memakai upload terbaru.
+ *         example: 12
+ *     responses:
+ *       200:
+ *         description: Data Pembuangan Kolam Terpal berhasil diambil
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 upload_id:
+ *                   type: integer
+ *                   example: 12
+ *                 total_categories:
+ *                   type: integer
+ *                   example: 1
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       special_category:
+ *                         type: string
+ *                         example: PEMBUANGAN_KOLAM_TERPAL
+ *                       items:
+ *                         type: array
+ *                         items:
+ *                           type: object
+ *                           properties:
+ *                             variation:
+ *                               type: string
+ *                               example: 3/4 50 cm
+ *                             shipping:
+ *                               type: array
+ *                               items:
+ *                                 type: object
+ *                                 properties:
+ *                                   shipping_status:
+ *                                     type: string
+ *                                     example: today
+ *                                   total_orders:
+ *                                     type: integer
+ *                                     example: 2
+ *                                   total_quantity:
+ *                                     type: integer
+ *                                     example: 10
+ *                                   total_processed:
+ *                                     type: integer
+ *                                     example: 4
+ *                                   total_remaining:
+ *                                     type: integer
+ *                                     example: 6
+ *                                   progress:
+ *                                     type: number
+ *                                     example: 40
+ *       500:
+ *         description: Server error
+ */
+router.get("/orders-special", getSpecialOrders);
 
 /**
  * @swagger
