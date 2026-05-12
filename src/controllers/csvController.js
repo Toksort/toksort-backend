@@ -640,8 +640,15 @@ export const getSpecialOrders = async (req, res) => {
     const result = await pool.query(
       `
       SELECT
-        special_category,
-        normalized_variation,
+        'PEMBUANGAN_KOLAM_TERPAL' AS special_category,
+
+        COALESCE(
+          normalized_variation,
+          raw_variation,
+          variation,
+          'UNKNOWN'
+        ) AS variation,
+
         shipping_status,
 
         COUNT(*) AS total_orders,
@@ -656,13 +663,25 @@ export const getSpecialOrders = async (req, res) => {
 
       FROM orders
       WHERE upload_id = $1
-      AND special_category = 'PEMBUANGAN_KOLAM_TERPAL'
+      AND special_category IN (
+        'PEMBUANGAN_KOLAM_TERPAL',
+        'PEMBUANGAN_AIR'
+      )
       GROUP BY
-        special_category,
-        normalized_variation,
+        COALESCE(
+          normalized_variation,
+          raw_variation,
+          variation,
+          'UNKNOWN'
+        ),
         shipping_status
       ORDER BY
-        normalized_variation ASC,
+        COALESCE(
+          normalized_variation,
+          raw_variation,
+          variation,
+          'UNKNOWN'
+        ) ASC,
         shipping_status ASC
       `,
       [upload_id]
@@ -672,7 +691,7 @@ export const getSpecialOrders = async (req, res) => {
 
     result.rows.forEach((row) => {
       const category = row.special_category;
-      const variation = row.normalized_variation;
+      const variation = row.variation;
 
       if (!grouped[category]) {
         grouped[category] = {
