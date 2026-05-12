@@ -231,7 +231,81 @@ router.get("/grouped-orders", getGroupedOrdersCarryAware);
  */
 router.get("/orders-by-size", getOrdersBySize);
 
-router.get("/orders-special", getCourierTarpOrders);
+/**
+ * @swagger
+ * /api/orders-courier-tarp:
+ *   get:
+ *     summary: Group order Karung Kurir
+ *     description: Mengambil data Karung Kurir yang dikelompokkan berdasarkan jenis terpal A5, A8, A12, A15, A20, ukuran 50x100 sampai 90x100, dan status pengiriman.
+ *     tags: [Analytics]
+ *     parameters:
+ *       - in: query
+ *         name: upload_id
+ *         required: false
+ *         schema:
+ *           type: integer
+ *         description: Jika kosong, sistem memakai upload terbaru.
+ *         example: 12
+ *     responses:
+ *       200:
+ *         description: Data Karung Kurir berhasil diambil
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 upload_id:
+ *                   type: integer
+ *                   example: 12
+ *                 total_series:
+ *                   type: integer
+ *                   example: 5
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       size_series:
+ *                         type: string
+ *                         example: A5
+ *                       dimensions:
+ *                         type: array
+ *                         items:
+ *                           type: object
+ *                           properties:
+ *                             dimension:
+ *                               type: string
+ *                               example: 50x100
+ *                             shipping:
+ *                               type: array
+ *                               items:
+ *                                 type: object
+ *                                 properties:
+ *                                   shipping_status:
+ *                                     type: string
+ *                                     example: today
+ *                                   total_orders:
+ *                                     type: integer
+ *                                     example: 3
+ *                                   total_quantity:
+ *                                     type: integer
+ *                                     example: 15
+ *                                   total_processed:
+ *                                     type: integer
+ *                                     example: 5
+ *                                   total_remaining:
+ *                                     type: integer
+ *                                     example: 10
+ *                                   progress:
+ *                                     type: number
+ *                                     example: 33.33
+ *       500:
+ *         description: Server error
+ */
+router.get("/orders-courier-tarp", getCourierTarpOrders);
 
 /**
  * @swagger
