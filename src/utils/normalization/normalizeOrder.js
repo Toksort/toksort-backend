@@ -18,9 +18,10 @@ const detectProductCategory = (productName, variationMeta) => {
 
   // KARUNG KURIR
   if (
-    text.includes("terpal karung kurir") ||
     text.includes("karung kurir") ||
-    (text.includes("karung") && text.includes("anti air"))
+    text.includes("kurir anti air") ||
+    text.includes("resleting anti air") ||
+    text.includes("anti air kurir")
   ) {
     return PRODUCT_CATEGORIES.KARUNG_KURIR;
   }
@@ -40,35 +41,24 @@ const detectProductCategory = (productName, variationMeta) => {
 export const normalizeOrder = (item) => {
   const variationMeta = classifyVariation(item.variation);
 
-  const productSizeSeries =
-    extractASeries(item.product_name);
+  const productSizeSeries = extractASeries(item.product_name);
 
-  const productDimension =
-    extractDimension(item.product_name);
+  const productDimension = extractDimension(item.product_name);
 
-  const sizeSeries =
-    variationMeta.size_series ||
-    productSizeSeries ||
-    null;
+  const sizeSeries = variationMeta.size_series || productSizeSeries || null;
 
-  const dimension =
-    variationMeta.dimension ||
-    productDimension ||
-    null;
+  const dimension = variationMeta.dimension || productDimension || null;
 
   const specialCategory = detectProductCategory(
     item.product_name,
-    variationMeta
+    variationMeta,
   );
 
-  const normalizedProductName = normalizeProductName(
-    item.product_name,
-    {
-      ...variationMeta,
-      size_series: sizeSeries,
-      dimension,
-    }
-  );
+  const normalizedProductName = normalizeProductName(item.product_name, {
+    ...variationMeta,
+    size_series: sizeSeries,
+    dimension,
+  });
 
   const variationType =
     specialCategory === PRODUCT_CATEGORIES.KARUNG_KURIR

@@ -3,7 +3,7 @@ export const extractASeries = (value) => {
 
   const text = value.toString().trim().toUpperCase();
 
-  const match = text.match(/\bA(2[0]|1[0-9]|[2-9])\b/);
+  const match = text.match(/\bA\s?(2[0]|1[0-9]|[2-9])\b/);
 
   return match ? `A${match[1]}` : null;
 };
