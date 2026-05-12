@@ -10,23 +10,20 @@ export const PRODUCT_CATEGORIES = {
 };
 
 const detectProductCategory = (productName, variationMeta) => {
-  if (!productName) {
-    return PRODUCT_CATEGORIES.TERPAL_KOLAM;
-  }
+  const text = productName?.toString().toLowerCase() || "";
 
-  const text = productName.toString().toLowerCase();
-
-  // KARUNG KURIR
+  // 1. KARUNG KURIR harus dicek dulu
   if (
     text.includes("karung kurir") ||
+    text.includes("terpal karung") ||
     text.includes("kurir anti air") ||
     text.includes("resleting anti air") ||
-    text.includes("anti air kurir")
+    (text.includes("karung") && text.includes("anti air"))
   ) {
     return PRODUCT_CATEGORIES.KARUNG_KURIR;
   }
 
-  // PEMBUANGAN KOLAM
+  // 2. PEMBUANGAN KOLAM dari variation
   if (
     variationMeta.special_category ===
     PRODUCT_CATEGORIES.PEMBUANGAN_KOLAM_TERPAL
@@ -34,7 +31,7 @@ const detectProductCategory = (productName, variationMeta) => {
     return PRODUCT_CATEGORIES.PEMBUANGAN_KOLAM_TERPAL;
   }
 
-  // DEFAULT
+  // 3. default
   return PRODUCT_CATEGORIES.TERPAL_KOLAM;
 };
 
@@ -42,16 +39,21 @@ export const normalizeOrder = (item) => {
   const variationMeta = classifyVariation(item.variation);
 
   const productSizeSeries = extractASeries(item.product_name);
-
   const productDimension = extractDimension(item.product_name);
 
-  const sizeSeries = variationMeta.size_series || productSizeSeries || null;
+  const sizeSeries =
+    variationMeta.size_series ||
+    productSizeSeries ||
+    null;
 
-  const dimension = variationMeta.dimension || productDimension || null;
+  const dimension =
+    variationMeta.dimension ||
+    productDimension ||
+    null;
 
   const specialCategory = detectProductCategory(
     item.product_name,
-    variationMeta,
+    variationMeta
   );
 
   const normalizedProductName = normalizeProductName(item.product_name, {
@@ -59,11 +61,6 @@ export const normalizeOrder = (item) => {
     size_series: sizeSeries,
     dimension,
   });
-
-  const variationType =
-    specialCategory === PRODUCT_CATEGORIES.KARUNG_KURIR
-      ? "SPECIAL"
-      : variationMeta.variation_type;
 
   return {
     ...item,
@@ -74,14 +71,13 @@ export const normalizeOrder = (item) => {
     raw_variation: variationMeta.raw_variation,
     normalized_variation: variationMeta.normalized_variation,
 
-    variation_type: variationType,
+    variation_type: variationMeta.variation_type,
 
     size_series: sizeSeries,
     dimension,
 
     special_category: specialCategory,
 
-    // backward compatibility
     product_name: normalizedProductName,
     variation: variationMeta.normalized_variation,
   };
