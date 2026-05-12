@@ -35,8 +35,9 @@ const detectSpecialCategory = (value) => {
 
   const text = value.toString().trim().toLowerCase();
 
+  // PEMBUANGAN KOLAM TERPAL
   if (/\b(1\/2|3\/4)\b/.test(text) && text.includes("cm")) {
-    return "PEMBUANGAN_AIR";
+    return "PEMBUANGAN_KOLAM_TERPAL";
   }
 
   return null;
@@ -45,6 +46,7 @@ const detectSpecialCategory = (value) => {
 export const classifyVariation = (variation) => {
   const raw = variation?.toString().trim() || null;
 
+  // DEFAULT -> A5
   if (!raw || raw.toUpperCase() === "DEFAULT") {
     return {
       raw_variation: raw,
@@ -56,6 +58,7 @@ export const classifyVariation = (variation) => {
     };
   }
 
+  // SPECIAL CATEGORY
   const specialCategory = detectSpecialCategory(raw);
 
   if (specialCategory) {
@@ -69,6 +72,7 @@ export const classifyVariation = (variation) => {
     };
   }
 
+  // A SERIES
   const aSeries = extractASeries(raw);
 
   if (aSeries) {
@@ -82,6 +86,7 @@ export const classifyVariation = (variation) => {
     };
   }
 
+  // DIMENSION
   const dimension = extractDimension(raw);
 
   if (dimension) {
@@ -95,6 +100,7 @@ export const classifyVariation = (variation) => {
     };
   }
 
+  // QUANTITY
   const quantity = detectQuantity(raw);
 
   if (quantity) {
@@ -108,6 +114,7 @@ export const classifyVariation = (variation) => {
     };
   }
 
+  // RATIO
   const ratio = detectRatio(raw);
 
   if (ratio) {
@@ -121,6 +128,7 @@ export const classifyVariation = (variation) => {
     };
   }
 
+  // UNKNOWN
   return {
     raw_variation: raw,
     normalized_variation: "unknown",

@@ -3,6 +3,10 @@ import { normalizeProductName } from "./normalizeProductName.js";
 import { extractASeries } from "./extractASeries.js";
 import { extractDimension } from "./extractDimension.js";
 
+const PRODUCT_CATEGORIES = {
+  KARUNG_KURIR: "KARUNG_KURIR",
+};
+
 const detectProductCategory = (productName) => {
   if (!productName) return null;
 
@@ -13,7 +17,7 @@ const detectProductCategory = (productName) => {
     text.includes("karung kurir") ||
     (text.includes("karung") && text.includes("anti air"))
   ) {
-    return "TERPAL_KARUNG_KURIR";
+    return PRODUCT_CATEGORIES.KARUNG_KURIR;
   }
 
   return null;
@@ -25,15 +29,8 @@ export const normalizeOrder = (item) => {
   const productSizeSeries = extractASeries(item.product_name);
   const productDimension = extractDimension(item.product_name);
 
-  const sizeSeries =
-    variationMeta.size_series ||
-    productSizeSeries ||
-    null;
-
-  const dimension =
-    variationMeta.dimension ||
-    productDimension ||
-    null;
+  const sizeSeries = variationMeta.size_series || productSizeSeries || null;
+  const dimension = variationMeta.dimension || productDimension || null;
 
   const productCategory = detectProductCategory(item.product_name);
 
@@ -48,10 +45,7 @@ export const normalizeOrder = (item) => {
     dimension,
   });
 
-  const variationType =
-    productCategory === "TERPAL_KARUNG_KURIR"
-      ? "SPECIAL"
-      : variationMeta.variation_type;
+  const variationType = productCategory ? "SPECIAL" : variationMeta.variation_type;
 
   return {
     ...item,
@@ -69,7 +63,6 @@ export const normalizeOrder = (item) => {
 
     special_category: specialCategory,
 
-    // backward compatibility
     product_name: normalizedProductName,
     variation: variationMeta.normalized_variation,
   };
