@@ -14,20 +14,18 @@ const detectQuantity = (value) => {
   if (!value) return null;
 
   const text = value.toString().trim().toLowerCase();
-
   const match = text.match(/\b\d+\s*(pcs|pc|buah|set)\b/);
 
-  return match ? match[0] : null;
+  return match ? match[0].replace(/\s+/g, " ") : null;
 };
 
 const detectRatio = (value) => {
   if (!value) return null;
 
   const text = value.toString().trim().toLowerCase();
-
   const match = text.match(/\b\d+\/\d+\s*\d*\s*cm\b|\b\d+\/\d+\b/);
 
-  return match ? match[0] : null;
+  return match ? match[0].replace(/\s+/g, " ") : null;
 };
 
 const detectSpecialCategory = (value) => {
@@ -35,7 +33,6 @@ const detectSpecialCategory = (value) => {
 
   const text = value.toString().trim().toLowerCase();
 
-  // PEMBUANGAN KOLAM TERPAL
   if (/\b(1\/2|3\/4)\b/.test(text) && text.includes("cm")) {
     return "PEMBUANGAN_KOLAM_TERPAL";
   }
@@ -46,7 +43,6 @@ const detectSpecialCategory = (value) => {
 export const classifyVariation = (variation) => {
   const raw = variation?.toString().trim() || null;
 
-  // DEFAULT -> A5
   if (!raw || raw.toUpperCase() === "DEFAULT") {
     return {
       raw_variation: raw,
@@ -58,7 +54,6 @@ export const classifyVariation = (variation) => {
     };
   }
 
-  // SPECIAL CATEGORY
   const specialCategory = detectSpecialCategory(raw);
 
   if (specialCategory) {
@@ -72,8 +67,8 @@ export const classifyVariation = (variation) => {
     };
   }
 
-  // A SERIES
   const aSeries = extractASeries(raw);
+  const dimension = extractDimension(raw);
 
   if (aSeries) {
     return {
@@ -81,13 +76,10 @@ export const classifyVariation = (variation) => {
       normalized_variation: aSeries,
       variation_type: VARIATION_TYPES.A_SERIES,
       size_series: aSeries,
-      dimension: null,
+      dimension,
       special_category: null,
     };
   }
-
-  // DIMENSION
-  const dimension = extractDimension(raw);
 
   if (dimension) {
     return {
@@ -100,7 +92,6 @@ export const classifyVariation = (variation) => {
     };
   }
 
-  // QUANTITY
   const quantity = detectQuantity(raw);
 
   if (quantity) {
@@ -114,7 +105,6 @@ export const classifyVariation = (variation) => {
     };
   }
 
-  // RATIO
   const ratio = detectRatio(raw);
 
   if (ratio) {
@@ -128,7 +118,6 @@ export const classifyVariation = (variation) => {
     };
   }
 
-  // UNKNOWN
   return {
     raw_variation: raw,
     normalized_variation: "unknown",

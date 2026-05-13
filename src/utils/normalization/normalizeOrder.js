@@ -1,12 +1,37 @@
-import {
-  normalizeProductName,
-  normalizeProductCategory,
-  PRODUCT_CATEGORIES,
-} from "./normalizeProductName.js";
-
 import { classifyVariation } from "./classifyVariation.js";
+import { normalizeProductName } from "./normalizeProductName.js";
 import { extractASeries } from "./extractASeries.js";
 import { extractDimension } from "./extractDimension.js";
+
+export const PRODUCT_CATEGORIES = {
+  TERPAL_KOLAM: "TERPAL_KOLAM",
+  PEMBUANGAN_KOLAM_TERPAL: "PEMBUANGAN_KOLAM_TERPAL",
+  KARUNG_KURIR: "KARUNG_KURIR",
+};
+
+const detectProductCategory = (productName, variationMeta) => {
+  const text = productName?.toString().toLowerCase() || "";
+
+  if (
+    text.includes("terpal karung kurir") ||
+    text.includes("karung kurir") ||
+    text.includes("resleting anti air") ||
+    text.includes("anti air kurir") ||
+    (text.includes("karung") && text.includes("kurir")) ||
+    (text.includes("karung") && text.includes("anti air"))
+  ) {
+    return PRODUCT_CATEGORIES.KARUNG_KURIR;
+  }
+
+  if (
+    variationMeta.special_category ===
+    PRODUCT_CATEGORIES.PEMBUANGAN_KOLAM_TERPAL
+  ) {
+    return PRODUCT_CATEGORIES.PEMBUANGAN_KOLAM_TERPAL;
+  }
+
+  return PRODUCT_CATEGORIES.TERPAL_KOLAM;
+};
 
 export const normalizeOrder = (item) => {
   const variationMeta = classifyVariation(item.variation);
@@ -14,24 +39,25 @@ export const normalizeOrder = (item) => {
   const productSizeSeries = extractASeries(item.product_name);
   const productDimension = extractDimension(item.product_name);
 
+  const variationSizeSeries = extractASeries(item.variation);
+  const variationDimension = extractDimension(item.variation);
+
   const sizeSeries =
     variationMeta.size_series ||
+    variationSizeSeries ||
     productSizeSeries ||
     null;
 
   const dimension =
     variationMeta.dimension ||
+    variationDimension ||
     productDimension ||
     null;
 
-  const productCategory = normalizeProductCategory(item.product_name);
-
-  const specialCategory =
-    productCategory === PRODUCT_CATEGORIES.KARUNG_KURIR
-      ? PRODUCT_CATEGORIES.KARUNG_KURIR
-      : productCategory === PRODUCT_CATEGORIES.PEMBUANGAN_KOLAM_TERPAL
-        ? PRODUCT_CATEGORIES.PEMBUANGAN_KOLAM_TERPAL
-        : PRODUCT_CATEGORIES.TERPAL_KOLAM;
+  const specialCategory = detectProductCategory(
+    item.product_name,
+    variationMeta
+  );
 
   const normalizedProductName = normalizeProductName(item.product_name, {
     ...variationMeta,
