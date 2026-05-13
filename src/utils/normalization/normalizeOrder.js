@@ -1,39 +1,12 @@
+import {
+  normalizeProductName,
+  normalizeProductCategory,
+  PRODUCT_CATEGORIES,
+} from "./normalizeProductName.js";
+
 import { classifyVariation } from "./classifyVariation.js";
-import { normalizeProductName } from "./normalizeProductName.js";
 import { extractASeries } from "./extractASeries.js";
 import { extractDimension } from "./extractDimension.js";
-
-export const PRODUCT_CATEGORIES = {
-  TERPAL_KOLAM: "TERPAL_KOLAM",
-  PEMBUANGAN_KOLAM_TERPAL: "PEMBUANGAN_KOLAM_TERPAL",
-  KARUNG_KURIR: "KARUNG_KURIR",
-};
-
-const detectProductCategory = (productName, variationMeta) => {
-  const text = productName?.toString().toLowerCase() || "";
-
-  // 1. KARUNG KURIR harus dicek dulu
-  if (
-    text.includes("karung kurir") ||
-    text.includes("terpal karung") ||
-    text.includes("kurir anti air") ||
-    text.includes("resleting anti air") ||
-    (text.includes("karung") && text.includes("anti air"))
-  ) {
-    return PRODUCT_CATEGORIES.KARUNG_KURIR;
-  }
-
-  // 2. PEMBUANGAN KOLAM dari variation
-  if (
-    variationMeta.special_category ===
-    PRODUCT_CATEGORIES.PEMBUANGAN_KOLAM_TERPAL
-  ) {
-    return PRODUCT_CATEGORIES.PEMBUANGAN_KOLAM_TERPAL;
-  }
-
-  // 3. default
-  return PRODUCT_CATEGORIES.TERPAL_KOLAM;
-};
 
 export const normalizeOrder = (item) => {
   const variationMeta = classifyVariation(item.variation);
@@ -51,10 +24,14 @@ export const normalizeOrder = (item) => {
     productDimension ||
     null;
 
-  const specialCategory = detectProductCategory(
-    item.product_name,
-    variationMeta
-  );
+  const productCategory = normalizeProductCategory(item.product_name);
+
+  const specialCategory =
+    productCategory === PRODUCT_CATEGORIES.KARUNG_KURIR
+      ? PRODUCT_CATEGORIES.KARUNG_KURIR
+      : productCategory === PRODUCT_CATEGORIES.PEMBUANGAN_KOLAM_TERPAL
+        ? PRODUCT_CATEGORIES.PEMBUANGAN_KOLAM_TERPAL
+        : PRODUCT_CATEGORIES.TERPAL_KOLAM;
 
   const normalizedProductName = normalizeProductName(item.product_name, {
     ...variationMeta,
