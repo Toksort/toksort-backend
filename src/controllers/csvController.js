@@ -860,7 +860,7 @@ export const getCourierTarpOrders = async (req, res) => {
 
 export const completeGroup = async (req, res) => {
   try {
-    let { upload_id, variation, shipping_status } = req.body;
+    let { upload_id, variation, dimension, shipping_status } = req.body;
 
     if (!variation || !shipping_status) {
       return res.status(400).json({
@@ -884,6 +884,19 @@ export const completeGroup = async (req, res) => {
       upload_id = latest.rows[0].id;
     }
 
+    const values = [
+      upload_id,
+      variation.toUpperCase(),
+      mapShippingToDB(shipping_status),
+    ];
+
+    let dimensionFilter = "";
+
+    if (dimension) {
+      values.push(dimension);
+      dimensionFilter = `AND dimension = $${values.length}`;
+    }
+
     const result = await pool.query(
       `
       UPDATE orders
@@ -893,9 +906,10 @@ export const completeGroup = async (req, res) => {
       WHERE upload_id = $1
       AND variation = $2
       AND shipping_status = $3
+      ${dimensionFilter}
       AND processed_quantity < quantity
-    `,
-      [upload_id, variation.toUpperCase(), mapShippingToDB(shipping_status)]
+      `,
+      values
     );
 
     return res.json({
@@ -903,7 +917,7 @@ export const completeGroup = async (req, res) => {
       updated: result.rowCount,
     });
   } catch (err) {
-    console.error(err);
+    console.error("COMPLETE GROUP ERROR:", err);
     return res.status(500).json({ error: "complete failed" });
   }
 };
@@ -912,9 +926,16 @@ export const completeGroup = async (req, res) => {
 
 export const completePartial = async (req, res) => {
   try {
-    let { upload_id, variation, shipping_status, quantity } = req.body;
+    let { upload_id, variation, dimension, shipping_status, quantity } = req.body;
 
     let remaining = parseInt(quantity);
+
+    if (!variation || !shipping_status) {
+      return res.status(400).json({
+        success: false,
+        message: "variation & shipping_status wajib diisi",
+      });
+    }
 
     if (!remaining || remaining <= 0) {
       return res.status(400).json({ error: "Invalid quantity" });
@@ -932,6 +953,19 @@ export const completePartial = async (req, res) => {
       upload_id = latest.rows[0].id;
     }
 
+    const values = [
+      upload_id,
+      variation.toUpperCase(),
+      mapShippingToDB(shipping_status),
+    ];
+
+    let dimensionFilter = "";
+
+    if (dimension) {
+      values.push(dimension);
+      dimensionFilter = `AND dimension = $${values.length}`;
+    }
+
     const result = await pool.query(
       `
       SELECT *
@@ -939,10 +973,11 @@ export const completePartial = async (req, res) => {
       WHERE upload_id = $1
       AND variation = $2
       AND shipping_status = $3
+      ${dimensionFilter}
       AND processed_quantity < quantity
       ORDER BY id ASC
-    `,
-      [upload_id, variation.toUpperCase(), mapShippingToDB(shipping_status)]
+      `,
+      values
     );
 
     const rows = result.rows;
@@ -968,7 +1003,7 @@ export const completePartial = async (req, res) => {
             ELSE 'pending'
           END
         WHERE id = $2
-      `,
+        `,
         [take, row.id]
       );
 
@@ -983,7 +1018,7 @@ export const completePartial = async (req, res) => {
       remaining,
     });
   } catch (err) {
-    console.error(err);
+    console.error("COMPLETE PARTIAL ERROR:", err);
     return res.status(500).json({ error: "partial complete failed" });
   }
 };
@@ -1107,13 +1142,26 @@ export const getUploadSummary = async (req, res) => {
 
 export const undoCompleteGroup = async (req, res) => {
   try {
-    const { upload_id, variation, shipping_status } = req.body;
+    const { upload_id, variation, dimension, shipping_status } = req.body;
 
     if (!upload_id || !variation || !shipping_status) {
       return res.status(400).json({
         success: false,
         message: "upload_id, variation, shipping_status wajib diisi",
       });
+    }
+
+    const values = [
+      upload_id,
+      variation.toUpperCase(),
+      mapShippingToDB(shipping_status),
+    ];
+
+    let dimensionFilter = "";
+
+    if (dimension) {
+      values.push(dimension);
+      dimensionFilter = `AND dimension = $${values.length}`;
     }
 
     const result = await pool.query(
@@ -1125,9 +1173,10 @@ export const undoCompleteGroup = async (req, res) => {
       WHERE upload_id = $1
       AND variation = $2
       AND shipping_status = $3
+      ${dimensionFilter}
       AND status = 'done'
-    `,
-      [upload_id, variation.toUpperCase(), mapShippingToDB(shipping_status)]
+      `,
+      values
     );
 
     return res.json({
@@ -1136,7 +1185,7 @@ export const undoCompleteGroup = async (req, res) => {
       message: "Undo complete berhasil",
     });
   } catch (err) {
-    console.error(err);
+    console.error("UNDO COMPLETE GROUP ERROR:", err);
     return res.status(500).json({
       success: false,
       message: "Undo failed",
