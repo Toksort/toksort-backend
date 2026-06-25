@@ -10,7 +10,7 @@ const app = express();
 
 const PORT = process.env.PORT || 3000;
 const BASE_URL =
-  process.env.BASE_URL || "https://toksort-backend-backend.up.railway.app";
+  process.env.BASE_URL || "https://toksort-backend-production.up.railway.app";
 
 app.use(cors({ origin: "*" }));
 app.use(express.json({ limit: "10mb" }));
